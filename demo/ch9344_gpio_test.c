@@ -13,15 +13,15 @@
  * Update Log:
  * V1.0 - initial version
  */
- 
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <fcntl.h>  
-#include <errno.h>   
+#include <fcntl.h>
+#include <errno.h>
 #include <string.h>
-#include <sys/types.h> 
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <signal.h>
 #include <getopt.h>
@@ -48,31 +48,30 @@ static const char *device = "/dev/ttyCH9344USB0";
  */
 int libtty_open(const char *devname)
 {
-	int fd = open(devname, O_RDWR | O_NOCTTY | O_NDELAY); 
+	int fd = open(devname, O_RDWR | O_NOCTTY | O_NDELAY);
 	int flags = 0;
-	
-	if (fd < 0) {                        
+
+	if (fd < 0) {
 		perror("open device failed");
-		return -1;            
+		return -1;
 	}
-	
+
 	flags = fcntl(fd, F_GETFL, 0);
 	flags &= ~O_NONBLOCK;
 	if (fcntl(fd, F_SETFL, flags) < 0) {
 		printf("fcntl failed.\n");
 		return -1;
 	}
-		
+
 	if (isatty(fd) == 0) {
 		printf("not tty device.\n");
 		return -1;
-	}
-	else
+	} else
 		printf("tty device test ok.\n");
-	
+
 	return fd;
 }
- 
+
 /**
  * libtty_close - close tty device
  * @fd: the device handle
@@ -87,7 +86,7 @@ int libtty_close(int fd)
 /**
  * libtty_gpioenable - gpio enable
  * @fd: file descriptor of tty device
- * @gpiogroup: gpio group of gpio0-11, 0 on gpio0-2, 1 on gpio 3-5, 
+ * @gpiogroup: gpio group of gpio0-11, 0 on gpio0-2, 1 on gpio 3-5,
  *             2 on gpio6-8, 3 on gpio9-11
  * @gpioenable: gpio enable value, 1 on enable, 0 on disable
  *
@@ -96,7 +95,7 @@ int libtty_close(int fd)
 int libtty_gpioenable(int fd, uint8_t gpiogroup, uint8_t gpioenable)
 {
 	unsigned long val = (gpiogroup << 8) | gpioenable;
-	
+
 	return ioctl(fd, IOCTL_CMD_GPIOENABLE, &val);
 }
 
@@ -111,7 +110,7 @@ int libtty_gpioenable(int fd, uint8_t gpiogroup, uint8_t gpioenable)
 int libtty_gpiodirset(int fd, uint8_t gpionumber, uint8_t gpiodir)
 {
 	unsigned long val = (gpionumber << 8) | gpiodir;
-	
+
 	return ioctl(fd, IOCTL_CMD_GPIODIR, &val);
 }
 
@@ -126,7 +125,7 @@ int libtty_gpiodirset(int fd, uint8_t gpionumber, uint8_t gpiodir)
 int libtty_gpioset(int fd, uint8_t gpionumber, uint8_t gpioval)
 {
 	unsigned long val = (gpionumber << 8) | gpioval;
-	
+
 	return ioctl(fd, IOCTL_CMD_GPIOSET, &val);
 }
 
@@ -145,7 +144,7 @@ int libtty_gpioget(int fd, uint8_t gpionumber, uint8_t *gpioval)
 	if (ioctl(fd, IOCTL_CMD_GPIOGET, &val) != 0)
 		return -1;
 	*gpioval = (uint8_t)val;
-	
+
 	return 0;
 }
 
@@ -159,8 +158,8 @@ void libtty_gpiotest(int fd)
 	while (1) {
 		if (c != '\n')
 			printf("press e to enable gpio, d to disable gpio, "
-					"o to set gpio output, i to set gpio input, "
-					"h to output high, l to low, g to get gpio, q to quit.\n");
+			       "o to set gpio output, i to set gpio input, "
+			       "h to output high, l to low, g to get gpio, q to quit.\n");
 		scanf("%c", &c);
 		if (c == 'q')
 			break;
@@ -191,7 +190,7 @@ void libtty_gpiotest(int fd)
 					break;
 				}
 			}
-			break;		
+			break;
 		case 'i':
 			for (i = 0; i < MAXGPIO; i++) {
 				ret = libtty_gpiodirset(fd, i, 0x00);
@@ -247,9 +246,9 @@ int main(int argc, char *argv[])
 		printf("libtty_open error.\n");
 		exit(0);
 	}
-	
+
 	libtty_gpiotest(fd);
- 	
+
 	ret = libtty_close(fd);
 	if (ret != 0) {
 		printf("libtty_close error.\n");

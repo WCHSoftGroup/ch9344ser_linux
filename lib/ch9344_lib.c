@@ -1,4 +1,4 @@
-/* 
+/*
  * application library of ch9344.
  *
  * Copyright (C) 2021 WCH.
@@ -11,7 +11,7 @@
  * Cross-compile with cross-gcc -I /path/to/cross-kernel/include
  *
  * Version: V1.0
- * 
+ *
  * Update Log:
  * V1.0 - initial version
  */
@@ -21,7 +21,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <sys/types.h> 
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include "ch9344_lib.h"
@@ -36,31 +36,30 @@ static const char *device = "/dev/ttyCH343USB0";
  */
 int libch9344_open(const char *devname)
 {
-	int fd = open(devname, O_RDWR | O_NOCTTY | O_NDELAY); 
+	int fd = open(devname, O_RDWR | O_NOCTTY | O_NDELAY);
 	int flags = 0;
-	
-	if (fd < 0) {                        
+
+	if (fd < 0) {
 		perror("open device failed");
-		return -1;            
+		return -1;
 	}
-	
+
 	flags = fcntl(fd, F_GETFL, 0);
 	flags &= ~O_NONBLOCK;
 	if (fcntl(fd, F_SETFL, flags) < 0) {
 		printf("fcntl failed.\n");
 		return -1;
 	}
-		
+
 	if (isatty(fd) == 0) {
 		printf("not tty device.\n");
 		return -1;
-	}
-	else
+	} else
 		printf("tty device open successfully.\n");
-	
+
 	return fd;
 }
- 
+
 /**
  * libch9344_close - close tty device
  * @fd: the device handle
@@ -75,7 +74,7 @@ int libch9344_close(int fd)
 /**
  * libch9344_gpioenable - gpio enable
  * @fd: file descriptor of tty device
- * @gpiogroup: gpio group of gpio0-11, 0 on gpio0-2, 1 on gpio 3-5, 
+ * @gpiogroup: gpio group of gpio0-11, 0 on gpio0-2, 1 on gpio 3-5,
  *             2 on gpio6-8, 3 on gpio9-11
  * @gpioenable: gpio enable value, 1 on enable, 0 on disable
  *
@@ -84,7 +83,7 @@ int libch9344_close(int fd)
 int libch9344_gpioenable(int fd, uint8_t gpiogroup, uint8_t gpioenable)
 {
 	unsigned long val = (gpiogroup << 8) | gpioenable;
-	
+
 	return ioctl(fd, IOCTL_CMD_GPIOENABLE, &val);
 }
 
@@ -99,7 +98,7 @@ int libch9344_gpioenable(int fd, uint8_t gpiogroup, uint8_t gpioenable)
 int libch9344_gpiodirset(int fd, uint8_t gpionumber, uint8_t gpiodir)
 {
 	unsigned long val = (gpionumber << 8) | gpiodir;
-	
+
 	return ioctl(fd, IOCTL_CMD_GPIODIR, &val);
 }
 
@@ -114,7 +113,7 @@ int libch9344_gpiodirset(int fd, uint8_t gpionumber, uint8_t gpiodir)
 int libch9344_gpioset(int fd, uint8_t gpionumber, uint8_t gpioval)
 {
 	unsigned long val = (gpionumber << 8) | gpioval;
-	
+
 	return ioctl(fd, IOCTL_CMD_GPIOSET, &val);
 }
 
@@ -133,6 +132,6 @@ int libch9344_gpioget(int fd, uint8_t gpionumber, uint8_t *gpioval)
 	if (ioctl(fd, IOCTL_CMD_GPIOGET, &val) != 0)
 		return -1;
 	*gpioval = (uint8_t)val;
-	
+
 	return 0;
 }

@@ -17,7 +17,7 @@
  * In this demo device is opened blocked, you could modify it at will.
  */
 extern int libch9344_open(const char *devname);
- 
+
 /**
  * libch9344_close - close tty device
  * @fd: the device handle
@@ -29,7 +29,7 @@ extern int libch9344_close(int fd);
 /**
  * libch9344_gpioenable - gpio enable
  * @fd: file descriptor of tty device
- * @gpiogroup: gpio group of gpio0-11, 0 on gpio0-2, 1 on gpio 3-5, 
+ * @gpiogroup: gpio group of gpio0-11, 0 on gpio0-2, 1 on gpio 3-5,
  *             2 on gpio6-8, 3 on gpio9-11
  * @gpioenable: gpio enable value, 1 on enable, 0 on disable
  *

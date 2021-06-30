@@ -128,7 +128,7 @@ struct usb_ch9344_line_coding {
 #define PAS			4
 
 	__u8	bDataBits;
-} __attribute__ ((packed));
+} __attribute__((packed));
 
 struct ch9344 {
 	struct usb_device *dev;				/* the corresponding usb device */
@@ -137,22 +137,22 @@ struct ch9344 {
 	unsigned int num_ports;
 	bool modeline9;
 	struct ch9344_ttyport ttyport[MAXPORT];			 	/* our tty port data */
-	
+
 	struct urb *cmdreadurb;				/* urbs */
 	u8 *cmdread_buffer;				/* buffers of urbs */
 	dma_addr_t cmdread_dma;				/* dma handles of buffers */
-	
+
 	struct ch9344_wb wb[CH9344_NW];
 	unsigned long read_urbs_free;
 	struct urb *read_urbs[CH9344_NR];
 	struct ch9344_rb read_buffers[CH9344_NR];
 	int rx_buflimit;
 	int rx_endpoint;
-    int tx_endpoint;
-    int cmdtx_endpoint;
-    int cmdrx_endpoint;
-    int ctrl_endpoint;
-	
+	int tx_endpoint;
+	int cmdtx_endpoint;
+	int cmdrx_endpoint;
+	int ctrl_endpoint;
+
 	spinlock_t read_lock;
 	int write_used;					/* number of non-empty write buffers */
 	int transmitting;
