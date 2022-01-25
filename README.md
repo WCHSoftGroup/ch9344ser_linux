@@ -2,7 +2,7 @@
 
 ## Description
 
-​	This directory contains 2 parts, ch9344 driver and gpio testing utility. This driver and application only support USB to quad serial ports chip ch9344.
+​	This driver supports USB to quad serial ports chip ch9344 and USB to octal serial ports chip ch348.
 
 1. Open "Terminal"
 2. Switch to "driver" directory
@@ -14,9 +14,9 @@
 8. You can refer to the link below to acquire uart application, you can use gcc or Cross-compile with cross-gcc
    https://github.com/WCHSoftGroup/tty_uart
 
-​	Before the driver works, you should make sure that the ch9344 device has been plugged in and is working properly, you can use shell command "lsusb" or "dmesg" to confirm that, USB ID of ch9344 is [1A86]:[E018].
+​	Before the driver works, you should make sure that the usb device has been plugged in and is working properly, you can use shell command "lsusb" or "dmesg" to confirm that, USB VID of these devices are [1A86], you can view all IDs from the id table which defined in "ch9344.c".
 
-​	If ch9344 device works well, the driver will created tty devices named "ttyCH9344USBx" in /dev directory.
+​	If the device works well, the driver will created tty devices named "ttyCH9344USBx" in /dev directory.
 
 ## Note
 
