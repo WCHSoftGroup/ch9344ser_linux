@@ -42,8 +42,6 @@
 #define CMD_WB_E			0x90
 #define CMD_RB_E 			0xC0
 
-#define PORT_OFFSET 		0x04
-
 #define M_NOR   			0x00
 #define M_RS    			0x01
 #define M_IO    			0x02
@@ -56,6 +54,8 @@
 #define R_IO_D  			0x98
 #define R_IO_O  			0x99
 #define R_IO_I   			0x9b
+#define R_TM_O				0x9c
+#define R_INIT				0xa1
 
 #define R_C1 				0x01
 #define R_C2 				0x02
@@ -71,21 +71,12 @@
  * Internal driver structures.
  */
 
-/*
- * The only reason to have several buffers is to accommodate assumptions
- * in line disciplines. They ask for empty space amount, receive our URB size,
- * and proceed to issue several 1-character writes, assuming they will fit.
- * The very first write takes a complete URB. Fortunately, this only happens
- * when processing onlcr, so we only need 2 buffers. These values must be
- * powers of 2.
- */
 #define CH9344_NW  16
-#define CH9344_NR  16
+#define CH9344_NR  32
 
-#define MAXDEV 4
-#define MAXPORT 4
+#define NUMSTEP 8
 #define MAXGPIO 12
-#define NUMSTEP 4
+#define MAXPORT 8
 
 #define IO_H 1
 #define IO_L 0
@@ -97,6 +88,7 @@ struct ch9344_wb {
 	int use;
 	struct urb		*urb;
 	struct ch9344		*instance;
+	int portnum;
 };
 
 struct ch9344_rb {
@@ -107,17 +99,11 @@ struct ch9344_rb {
 	struct ch9344		*instance;
 };
 
-struct ch9344_ttyport {
-	struct tty_port port;
-	int portnum;
-	void *portdata;
-};
-
 struct usb_ch9344_line_coding {
 	__le32	dwDTERate;
 	__u8	bCharFormat;
 #define SB1			0
-#define SB1_5		1
+#define SB1_5			1
 #define SB2			2
 
 	__u8	bParityType;
@@ -130,18 +116,45 @@ struct usb_ch9344_line_coding {
 	__u8	bDataBits;
 } __attribute__((packed));
 
+struct ch9344_ttyport {
+	struct tty_port port;
+	int portnum;
+	void *portdata;
+	bool write_empty;
+	struct usb_ch9344_line_coding line;		/* bits, stop, parity */
+	unsigned int ctrlin;				/* input control lines (DCD, DSR, RI, break, overruns) */
+	unsigned int ctrlout;				/* output control lines (DTR, RTS) */
+	struct async_icount iocount;			/* counters for control line changes */
+	struct async_icount oldcount;			/* for comparison of counter */
+	u8 uartmode;					/* uart mode */
+	unsigned char clocal;				/* termios CLOCAL */
+	wait_queue_head_t wioctl;			/* for write */
+	wait_queue_head_t wmodemioctl;			/* for ioctl */
+	bool isopen;
+	struct work_struct work;			/* work queue entry for line discipline waking up */
+};
+
+typedef enum {
+	CHIP_CH9344 = 0,
+	CHIP_CH348 = 1,
+} CHIPTYPE;
+
 struct ch9344 {
 	struct usb_device *dev;				/* the corresponding usb device */
 	struct usb_interface *control;			/* control interface */
 	struct usb_interface *data;			/* data interface */
 	unsigned int num_ports;
 	bool modeline9;
-	struct ch9344_ttyport ttyport[MAXPORT];			 	/* our tty port data */
+	struct ch9344_ttyport ttyport[MAXPORT];		/* our tty port data */
+	CHIPTYPE chiptype;
+	int port_offset;
 
 	struct urb *cmdreadurb;				/* urbs */
 	u8 *cmdread_buffer;				/* buffers of urbs */
 	dma_addr_t cmdread_dma;				/* dma handles of buffers */
 
+	struct work_struct tmpwork;			/* work queue entry for line discipline waking up */
+	int opencounts;
 	struct ch9344_wb wb[CH9344_NW];
 	unsigned long read_urbs_free;
 	struct urb *read_urbs[CH9344_NR];
@@ -156,30 +169,19 @@ struct ch9344 {
 	spinlock_t read_lock;
 	int write_used;					/* number of non-empty write buffers */
 	int transmitting;
-	bool write_empty[MAXPORT];
 	spinlock_t write_lock;
 	struct mutex mutex;
 	bool disconnected;
-	struct usb_ch9344_line_coding line[CH9344_NR];		/* bits, stop, parity */
-	struct work_struct work;			/* work queue entry for line discipline waking up */
-	unsigned int ctrlin[CH9344_NR];				/* input control lines (DCD, DSR, RI, break, overruns) */
-	unsigned int ctrlout[CH9344_NR];				/* output control lines (DTR, RTS) */
-	struct async_icount iocount[CH9344_NR];			/* counters for control line changes */
-	struct async_icount oldcount[CH9344_NR];			/* for comparison of counter */
-	u8 uartmode[CH9344_NR];				/* uart mode */
 	u8 gpiodir[MAXGPIO];				/* gpio direction */
 	u8 gpioval[MAXGPIO];				/* gpio output value */
-	u16 gpiovalin;						/* gpio input value */
-	bool gpio_recv;						/* gpio input sync flag */
-	wait_queue_head_t wioctl;			/* for write */
-	wait_queue_head_t wmodemioctl;		/* for ioctl */
-	wait_queue_head_t wgpioioctl;		/* for gpio input ioctl */
+	u16 gpiovalin;					/* gpio input value */
+	bool gpio_recv;					/* gpio input sync flag */
+	wait_queue_head_t wgpioioctl;			/* for gpio input ioctl */
 	struct mutex gpiomutex;
 	unsigned int writesize;				/* max packet size for the output bulk endpoint */
 	unsigned int readsize, cmdsize;			/* buffer sizes for freeing */
 	unsigned int ctrlsize;
-	unsigned int minor;				    /* ch9344 minor number */
-	unsigned char clocal[CH9344_NR];				/* termios CLOCAL */
+	unsigned int minor;				/* ch9344 minor number */
 	unsigned int susp_count;			/* number of suspended interfaces */
 	u8 bInterval;
 	struct usb_anchor delayed;			/* writes queued for a device about to be woken */
