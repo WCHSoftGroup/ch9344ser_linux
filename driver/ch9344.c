@@ -952,7 +952,11 @@ transmit:
 	return sendlen;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
+static unsigned int ch9344_tty_write_room(struct tty_struct *tty)
+#else
 static int ch9344_tty_write_room(struct tty_struct *tty)
+#endif
 {
 	struct ch9344 *ch9344 = tty->driver_data;
 	/*
@@ -962,7 +966,11 @@ static int ch9344_tty_write_room(struct tty_struct *tty)
 	return ch9344_wb_is_avail(ch9344) ? ch9344->writesize : 0;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
+static unsigned int ch9344_tty_chars_in_buffer(struct tty_struct *tty)
+#else
 static int ch9344_tty_chars_in_buffer(struct tty_struct *tty)
+#endif
 {
 	struct ch9344 *ch9344 = tty->driver_data;
 	/*
@@ -2197,9 +2205,15 @@ static int __init ch9344_init(void)
 {
 	int retval;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
+	ch9344_tty_driver = tty_alloc_driver(CH9344_TTY_MINORS, 0);
+	if (IS_ERR(ch9344_tty_driver))
+		return PTR_ERR(ch9344_tty_driver);
+#else
 	ch9344_tty_driver = alloc_tty_driver(CH9344_TTY_MINORS);
 	if (!ch9344_tty_driver)
 		return -ENOMEM;
+#endif
 	ch9344_tty_driver->driver_name = "ch9344",
 	ch9344_tty_driver->name = "ttyCH9344USB",
 	ch9344_tty_driver->major = CH9344_TTY_MAJOR,
@@ -2214,14 +2228,22 @@ static int __init ch9344_init(void)
 
 	retval = tty_register_driver(ch9344_tty_driver);
 	if (retval) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
+		tty_driver_kref_put(ch9344_tty_driver);
+#else
 		put_tty_driver(ch9344_tty_driver);
+#endif
 		return retval;
 	}
 
 	retval = usb_register(&ch9344_driver);
 	if (retval) {
 		tty_unregister_driver(ch9344_tty_driver);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
+		tty_driver_kref_put(ch9344_tty_driver);
+#else
 		put_tty_driver(ch9344_tty_driver);
+#endif
 		return retval;
 	}
 	printk(KERN_INFO KBUILD_MODNAME ": " DRIVER_DESC "\n");
@@ -2234,7 +2256,11 @@ static void __exit ch9344_exit(void)
 {
 	usb_deregister(&ch9344_driver);
 	tty_unregister_driver(ch9344_tty_driver);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
+	tty_driver_kref_put(ch9344_tty_driver);
+#else
 	put_tty_driver(ch9344_tty_driver);
+#endif
 	idr_destroy(&ch9344_minors);
 	printk(KERN_INFO KBUILD_MODNAME ": " "ch9344 driver exit.\n");
 }
