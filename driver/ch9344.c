@@ -25,6 +25,7 @@
  * V1.7 - added supports for break function
  * V1.8 - added supports for ch348
  * V1.9 - fixed os suspend/hibernate issues, added gpio character device
+ *      - added supports for kernel version beyond 5.14.x
  */
 
 #define DEBUG
