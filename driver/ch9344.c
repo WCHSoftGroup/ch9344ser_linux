@@ -61,7 +61,7 @@
 
 #define DRIVER_AUTHOR "WCH@TECH39"
 #define DRIVER_DESC   "USB serial driver for ch9344/ch348."
-#define VERSION_DESC  "V1.9 On 2022.08"
+#define VERSION_DESC  "V1.9 On 2022.09"
 
 #define IOCTL_MAGIC           'W'
 #define IOCTL_CMD_GPIOENABLE  _IOW(IOCTL_MAGIC, 0x80, u16)
@@ -596,12 +596,11 @@ static void ch9344_cmd_irq(struct urb *urb)
         dev_err(&ch9344->data->dev,
                 "%s - nonzero urb status received: %d\n",
                 __func__, status);
-        goto exit;
+        return;
     }
 
     usb_mark_last_busy(ch9344->dev);
 
-exit:
     retval = usb_submit_urb(urb, GFP_ATOMIC);
     if (retval && retval != -EPERM)
         dev_err(&ch9344->data->dev, "%s - usb_submit_urb failed: %d\n",
@@ -1046,7 +1045,11 @@ overflow:
     return 1;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+static unsigned int ch9344_tty_write_room(struct tty_struct *tty)
+#else
 static int ch9344_tty_write_room(struct tty_struct *tty)
+#endif
 {
     struct ch9344 *ch9344 = tty->driver_data;
     int portnum = ch9344_get_portnum(tty->index);
@@ -1058,7 +1061,11 @@ static int ch9344_tty_write_room(struct tty_struct *tty)
     return ch9344_wb_is_avail(ch9344, portnum) ? ch9344->writesize : 0;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+static unsigned int ch9344_tty_chars_in_buffer(struct tty_struct *tty)
+#else
 static int ch9344_tty_chars_in_buffer(struct tty_struct *tty)
+#endif
 {
     struct ch9344 *ch9344 = tty->driver_data;
     int portnum = ch9344_get_portnum(tty->index);
