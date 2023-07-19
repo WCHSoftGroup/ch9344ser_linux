@@ -10,11 +10,13 @@ load:
 unload:
 	rmmod ch9344
 install: default
-	mkdir -p /lib/modules/$(shell uname -r)/kernel/drivers/usb/serial/
-	cp -f ./ch9344.ko /lib/modules/$(shell uname -r)/kernel/drivers/usb/serial/
+	insmod ch9344.ko || true
+	mkdir -p /lib/modules/$(shell uname -r)/kernel/drivers/usb/serial/ || true
+	cp -f ./ch9344.ko /lib/modules/$(shell uname -r)/kernel/drivers/usb/serial/ || true
 	depmod -a
 uninstall:
-	rm -rf /lib/modules/$(shell uname -r)/kernel/drivers/usb/serial/ch9344.ko
+	rmmod ch9344 || true
+	rm -rf /lib/modules/$(shell uname -r)/kernel/drivers/usb/serial/ch9344.ko || true
 	depmod -a
 else
 	obj-m := ch9344.o
