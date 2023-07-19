@@ -15,7 +15,7 @@
  *
  * Update Log:
  * V1.0 - initial version
- * V1.1 - add supports for ch348
+ * V1.1 - add support for ch348
  * V1.2 - modify gpio operation
  */
 

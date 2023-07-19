@@ -20,8 +20,8 @@
  * V1.4 - add ioctl for rs485 mode
  * V1.5 - fix baud rate 0 bugs
  * V1.6 - fix modem out bugs, add gpio function,
- *		- remove rs485 control(hardware auto support)
- *		- add support for baudrates 250k, 500k, 1M, 1.5M, 3M, 12M
+ *      - remove rs485 control(hardware auto support)
+ *      - add support for baudrates 250k, 500k, 1M, 1.5M, 3M, 12M
  * V1.7 - add support for break function
  * V1.8 - add support for ch348
  * V1.9 - fix os suspend/hibernate issues, add gpio character device
