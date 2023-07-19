@@ -1,9 +1,9 @@
 /*
  * application library of USB to Quad UARTs chip ch9344 and USB to Octal UARTs chip ch348.
  *
- * Copyright (C) 2022 Nanjing Qinheng Microelectronics Co., Ltd.
+ * Copyright (C) 2023 Nanjing Qinheng Microelectronics Co., Ltd.
  * Web: http://wch.cn
- * Author: WCH@TECH39 <tech@wch.cn>
+ * Author: WCH <tech@wch.cn>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,8 +15,8 @@
  *
  * Update Log:
  * V1.0 - initial version
- * V1.1 - added supports for ch348
- * V1.2 - modified gpio operation
+ * V1.1 - add supports for ch348
+ * V1.2 - modify gpio operation
  */
 
 #include <fcntl.h>
@@ -37,17 +37,17 @@
  */
 int libch9344_open(const char *devname)
 {
-    int fd = open(devname, O_RDWR);
-    int flags = 0;
+	int fd = open(devname, O_RDWR);
+	int flags = 0;
 
-    if (fd < 0) {
-        perror("open device failed");
-        return -1;
-    }
+	if (fd < 0) {
+		perror("open device failed");
+		return -1;
+	}
 
-    printf("ch9344 gpio device open ok.\n");
+	printf("ch9344 gpio device open ok.\n");
 
-    return fd;
+	return fd;
 }
 
 /**
@@ -58,7 +58,7 @@ int libch9344_open(const char *devname)
  */
 int libch9344_close(int fd)
 {
-    return close(fd);
+	return close(fd);
 }
 
 /**
@@ -76,9 +76,9 @@ int libch9344_close(int fd)
  */
 int libch9344_gpioenable(int fd, uint8_t gpiogroup, uint8_t gpioenable)
 {
-    unsigned long val = (gpiogroup << 8) | gpioenable;
+	unsigned long val = (gpiogroup << 8) | gpioenable;
 
-    return ioctl(fd, IOCTL_CMD_GPIOENABLE, &val);
+	return ioctl(fd, IOCTL_CMD_GPIOENABLE, &val);
 }
 
 /**
@@ -91,9 +91,9 @@ int libch9344_gpioenable(int fd, uint8_t gpiogroup, uint8_t gpioenable)
  */
 int libch9344_gpiodirset(int fd, uint8_t gpionumber, uint8_t gpiodir)
 {
-    unsigned long val = (gpionumber << 8) | gpiodir;
+	unsigned long val = (gpionumber << 8) | gpiodir;
 
-    return ioctl(fd, IOCTL_CMD_GPIODIR, &val);
+	return ioctl(fd, IOCTL_CMD_GPIODIR, &val);
 }
 
 /**
@@ -106,9 +106,9 @@ int libch9344_gpiodirset(int fd, uint8_t gpionumber, uint8_t gpiodir)
  */
 int libch9344_gpioset(int fd, uint8_t gpionumber, uint8_t gpioval)
 {
-    unsigned long val = (gpionumber << 8) | gpioval;
+	unsigned long val = (gpionumber << 8) | gpioval;
 
-    return ioctl(fd, IOCTL_CMD_GPIOSET, &val);
+	return ioctl(fd, IOCTL_CMD_GPIOSET, &val);
 }
 
 /**
@@ -121,13 +121,13 @@ int libch9344_gpioset(int fd, uint8_t gpionumber, uint8_t gpioval)
  */
 int libch9344_gpioget(int fd, uint8_t gpionumber, uint8_t *gpioval)
 {
-    unsigned long val = gpionumber << 8;
+	unsigned long val = gpionumber << 8;
 
-    if (ioctl(fd, IOCTL_CMD_GPIOGET, &val) != 0)
-        return -1;
-    *gpioval = (uint8_t)val;
+	if (ioctl(fd, IOCTL_CMD_GPIOGET, &val) != 0)
+		return -1;
+	*gpioval = (uint8_t)val;
 
-    return 0;
+	return 0;
 }
 
 /**
@@ -139,30 +139,30 @@ int libch9344_gpioget(int fd, uint8_t gpionumber, uint8_t *gpioval)
  */
 int libch9344_get_chiptype(int fd, CHIPTYPE *type)
 {
-    int ret;
+	int ret;
 
-    ret = ioctl(fd, IOCTL_CMD_GETCHIPTYPE, type);
-    if (ret) {
-        printf("get chip type error.\n");
-        goto exit;
-    }
-    switch (*type) {
-    case CHIP_CH9344:
-        printf("current chip is CH9344.\n");
-        break;
-    case CHIP_CH348L:
-        printf("current chip is CH348L.\n");
-        break;
-    case CHIP_CH348Q:
-        printf("current chip is CH348Q.\n");
-        break;
-    default:
-        printf("current chip cannot be recognized.\n");
-        break;
-    }
+	ret = ioctl(fd, IOCTL_CMD_GETCHIPTYPE, type);
+	if (ret) {
+		printf("get chip type error.\n");
+		goto exit;
+	}
+	switch (*type) {
+	case CHIP_CH9344:
+		printf("current chip is CH9344.\n");
+		break;
+	case CHIP_CH348L:
+		printf("current chip is CH348L.\n");
+		break;
+	case CHIP_CH348Q:
+		printf("current chip is CH348Q.\n");
+		break;
+	default:
+		printf("current chip cannot be recognized.\n");
+		break;
+	}
 
 exit:
-    return ret;
+	return ret;
 }
 
 /**
@@ -173,19 +173,19 @@ exit:
  */
 int libch9344_get_gpio_count(CHIPTYPE chiptype)
 {
-    int ret;
+	int ret;
 
-    if (chiptype == CHIP_CH9344)
-        ret = 12;
-    else if (chiptype == CHIP_CH348L)
-        ret = 48;
-    else if (chiptype == CHIP_CH348Q)
-        ret = 12;
-    else {
-        printf("current chip not support gpio function.\n");
-        ret = -1;
-    }
-    return ret;
+	if (chiptype == CHIP_CH9344)
+		ret = 12;
+	else if (chiptype == CHIP_CH348L)
+		ret = 48;
+	else if (chiptype == CHIP_CH348Q)
+		ret = 12;
+	else {
+		printf("current chip not support gpio function.\n");
+		ret = -1;
+	}
+	return ret;
 }
 
 /**
@@ -196,17 +196,17 @@ int libch9344_get_gpio_count(CHIPTYPE chiptype)
  */
 int libch9344_get_gpio_group(CHIPTYPE chiptype)
 {
-    int ret;
+	int ret;
 
-    if (chiptype == CHIP_CH9344)
-        ret = 4;
-    else if (chiptype == CHIP_CH348L)
-        ret = 6;
-    else if (chiptype == CHIP_CH348Q)
-        ret = 2;
-    else {
-        printf("current chip not support gpio function.\n");
-        ret = -1;
-    }
-    return ret;
+	if (chiptype == CHIP_CH9344)
+		ret = 4;
+	else if (chiptype == CHIP_CH348L)
+		ret = 6;
+	else if (chiptype == CHIP_CH348Q)
+		ret = 2;
+	else {
+		printf("current chip not support gpio function.\n");
+		ret = -1;
+	}
+	return ret;
 }

@@ -1,7 +1,7 @@
 #ifndef _CH9344_LIB_H
 #define _CH9344_LIB_H
 
-#define IOCTL_MAGIC           'W'
+#define IOCTL_MAGIC	      'W'
 #define IOCTL_CMD_GPIOENABLE  _IOW(IOCTL_MAGIC, 0x80, uint16_t)
 #define IOCTL_CMD_GPIODIR     _IOW(IOCTL_MAGIC, 0x81, uint16_t)
 #define IOCTL_CMD_GPIOSET     _IOW(IOCTL_MAGIC, 0x82, uint16_t)
@@ -9,9 +9,9 @@
 #define IOCTL_CMD_GETCHIPTYPE _IOR(IOCTL_MAGIC, 0x84, uint16_t)
 
 typedef enum {
-    CHIP_CH9344 = 0,
-    CHIP_CH348L = 1,
-    CHIP_CH348Q = 2,
+	CHIP_CH9344 = 0,
+	CHIP_CH348L = 1,
+	CHIP_CH348Q = 2,
 } CHIPTYPE;
 
 /**
