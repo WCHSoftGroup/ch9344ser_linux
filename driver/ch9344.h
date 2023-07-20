@@ -76,9 +76,6 @@
 
 #define CMD_VER 0x96
 
-/*
- * Internal driver structures.
- */
 #define CH9344_NW 4
 #define CH9344_NR 16
 
@@ -89,6 +86,9 @@
 #define IO_H 1
 #define IO_L 0
 
+/*
+ * Internal driver structures.
+ */
 struct ch9344_wb {
 	unsigned char *buf;
 	dma_addr_t dmah;

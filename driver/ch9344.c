@@ -376,7 +376,7 @@ static int ch9344_start_wb(struct ch9344 *ch9344, struct ch9344_wb *wb)
 
 	rc = usb_submit_urb(wb->urb, GFP_ATOMIC);
 	if (rc < 0) {
-		dev_err(&ch9344->data->dev, "%s - usb_submit_urb(write bulk) failed: %d\n", __func__, rc);
+		dev_err(&ch9344->data->dev, "%s - usb_submit_urb(write) failed: %d\n", __func__, rc);
 		ch9344_write_done(ch9344, wb);
 	}
 	return rc;
