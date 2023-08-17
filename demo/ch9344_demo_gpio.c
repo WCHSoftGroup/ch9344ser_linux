@@ -19,25 +19,17 @@
  * V1.2 - modify gpio operation
  */
 
-#include <errno.h>
-#include <fcntl.h>
-#include <getopt.h>
-#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <unistd.h>
+#include <string.h>
+
 #include "ch9344_lib.h"
 
 static CHIPTYPE chiptype;
 static int gpiocount;
 static int gpiogroup;
-
-static const char *device = "/dev/ch9344_iodev1";
 
 void libch9344_gpiotest(int fd)
 {
@@ -151,12 +143,21 @@ int main(int argc, char *argv[])
 {
 	int fd;
 	int ret;
-	char c;
 
-	fd = libch9344_open(device);
+	if (argc != 2) {
+		printf("Usage: sudo %s [device]\n", argv[0]);
+		return -1;
+	}
+
+	if (!strstr(argv[1], "iodev")) {
+        printf("the gpio device is named ch9344_iodev*\n");
+        return -1;
+    }
+
+	fd = libch9344_open(argv[1]);
 	if (fd < 0) {
 		printf("libch9344_open error.\n");
-		exit(0);
+		return fd;
 	}
 
 	libch9344_gpiotest(fd);
@@ -164,6 +165,9 @@ int main(int argc, char *argv[])
 	ret = libch9344_close(fd);
 	if (ret != 0) {
 		printf("libch9344_close error.\n");
-		exit(0);
+		goto exit;
 	}
+
+exit:
+	return ret;
 }
