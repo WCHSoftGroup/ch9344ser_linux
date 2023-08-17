@@ -63,16 +63,17 @@
 
 #define DRIVER_AUTHOR "WCH"
 #define DRIVER_DESC   "USB serial driver for ch9344/ch348."
-#define VERSION_DESC  "V2.0 On 2023.07"
+#define VERSION_DESC  "V2.0 On 2023.08"
 
-#define IOCTL_MAGIC	      'W'
-#define IOCTL_CMD_GPIOENABLE  _IOW(IOCTL_MAGIC, 0x80, u16)
-#define IOCTL_CMD_GPIODIR     _IOW(IOCTL_MAGIC, 0x81, u16)
-#define IOCTL_CMD_GPIOSET     _IOW(IOCTL_MAGIC, 0x82, u16)
-#define IOCTL_CMD_GPIOGET     _IOWR(IOCTL_MAGIC, 0x83, u16)
-#define IOCTL_CMD_GETCHIPTYPE _IOR(IOCTL_MAGIC, 0x84, u16)
-#define IOCTL_CMD_CTRLIN      _IOWR(IOCTL_MAGIC, 0x90, u16)
-#define IOCTL_CMD_CTRLOUT     _IOW(IOCTL_MAGIC, 0x91, u16)
+#define IOCTL_MAGIC	       'W'
+#define IOCTL_CMD_GPIOENABLE   _IOW(IOCTL_MAGIC, 0x80, u16)
+#define IOCTL_CMD_GPIODIR      _IOW(IOCTL_MAGIC, 0x81, u16)
+#define IOCTL_CMD_GPIOSET      _IOW(IOCTL_MAGIC, 0x82, u16)
+#define IOCTL_CMD_GPIOGET      _IOWR(IOCTL_MAGIC, 0x83, u16)
+#define IOCTL_CMD_GETCHIPTYPE  _IOR(IOCTL_MAGIC, 0x84, u16)
+#define IOCTL_CMD_GETUARTINDEX _IOR(IOCTL_MAGIC, 0x85, u16)
+#define IOCTL_CMD_CTRLIN       _IOWR(IOCTL_MAGIC, 0x90, u16)
+#define IOCTL_CMD_CTRLOUT      _IOW(IOCTL_MAGIC, 0x91, u16)
 
 static struct usb_driver ch9344_driver;
 static struct tty_driver *ch9344_tty_driver;
@@ -740,6 +741,9 @@ static void ch9344_port_dtr_rts(struct tty_port *port, int raise)
 	int portnum = ttyport->portnum;
 	int val;
 
+	if ((ch9344->chiptype == CHIP_CH348Q) && (portnum > 3))
+		return;
+
 	if (raise)
 		val = CH9344_CTO_D | CH9344_CTO_R;
 	else
@@ -1102,6 +1106,9 @@ static int ch9344_tty_tiocmset(struct tty_struct *tty, unsigned int set, unsigne
 	int rv = 0;
 	int portnum = ch9344_get_portnum(tty->index);
 	unsigned int xorval;
+
+	if ((ch9344->chiptype == CHIP_CH348Q) && (portnum > 3))
+		return -EINVAL;
 
 	newctrl = ch9344->ttyport[portnum].ctrlout;
 	set = (set & TIOCM_DTR ? CH9344_CTO_D : 0) | (set & TIOCM_RTS ? CH9344_CTO_R : 0);
@@ -1616,6 +1623,13 @@ static int ch9344_tty_ioctl(struct tty_struct *tty, unsigned int cmd, unsigned l
 		} else
 			rv = 0;
 		break;
+	case IOCTL_CMD_GETUARTINDEX:
+		if (put_user(portnum, argval)) {
+			rv = -EFAULT;
+			goto out;
+		} else
+			rv = 0;
+		break;
 	case IOCTL_CMD_CTRLIN:
 		get_user(arg1, (long __user *)arg);
 		get_user(arg2, ((long __user *)arg + 1));
@@ -1884,6 +1898,7 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 		buffer[10] = cal_recv_tmt(newline.dwDTERate);
 		buffer[11] = xor;
 		cal_outdata(buffer + 3, rol & 0x0f, xor);
+
 		ret = ch9344_cmd_out(ch9344, buffer, 0x0c);
 		if (ret < 0)
 			goto out;
@@ -1908,12 +1923,15 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 	if (ret < 0)
 		goto out;
 
-	if (newctrl != ch9344->ttyport[portnum].ctrlout) {
-		if (newctrl & CH9344_CTO_D)
-			ch9344_set_control(ch9344, portnum, 0x01);
-		else
-			ch9344_set_control(ch9344, portnum, 0x00);
-		ch9344->ttyport[portnum].ctrlout = newctrl;
+	if ((ch9344->chiptype == CHIP_CH348Q) && (portnum > 3)) {
+	} else {
+		if (newctrl != ch9344->ttyport[portnum].ctrlout) {
+			if (newctrl & CH9344_CTO_D)
+				ch9344_set_control(ch9344, portnum, 0x01);
+			else
+				ch9344_set_control(ch9344, portnum, 0x00);
+			ch9344->ttyport[portnum].ctrlout = newctrl;
+		}
 	}
 
 	if (memcmp(&ch9344->ttyport[portnum].line, &newline, sizeof newline)) {
