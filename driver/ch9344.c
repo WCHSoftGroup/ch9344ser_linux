@@ -11,7 +11,7 @@
  * (at your option) any later version.
  *
  * System required:
- * Kernel version beyond 3.4.x
+ * Kernel version beyond 3.2.x
  * Update Log:
  * V1.0 - initial version
  * V1.1 - add support for high baudrates 2M, 4M and 6M
@@ -28,6 +28,7 @@
  *      - add support for kernel version beyond 5.14.x
  * V2.0 - add support for get_icount and ioctl operation
  *      - add support for kernel version beyond 6.3.x
+ * V2.1 - remove put_char and flush_chars methods of tty_operations
  */
 
 #define DEBUG
@@ -63,7 +64,7 @@
 
 #define DRIVER_AUTHOR "WCH"
 #define DRIVER_DESC   "USB serial driver for ch9344/ch348."
-#define VERSION_DESC  "V2.0 On 2023.08"
+#define VERSION_DESC  "V2.1 On 2023.12"
 
 #define IOCTL_MAGIC	       'W'
 #define IOCTL_CMD_GPIOENABLE   _IOW(IOCTL_MAGIC, 0x80, u16)
@@ -78,8 +79,13 @@
 static struct usb_driver ch9344_driver;
 static struct tty_driver *ch9344_tty_driver;
 
-static DEFINE_IDR(ch9344_minors);
 static DEFINE_MUTEX(ch9344_minors_lock);
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0))
+static DEFINE_IDR(ch9344_minors);
+#else
+static struct ch9344 *ch9344_table[CH9344_TTY_MINORS];
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0))
 static void ch9344_tty_set_termios(struct tty_struct *tty, const struct ktermios *termios_old);
@@ -90,6 +96,8 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 static int ch9344_get_portnum(int index);
 
 static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum, u8 index, u8 mode);
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0))
 
 /*
  * Look up an CH9344 structure by minor. If found and not disconnected, increment
@@ -137,6 +145,62 @@ static void ch9344_release_minor(struct ch9344 *ch9344)
 	idr_remove(&ch9344_minors, ch9344->minor);
 	mutex_unlock(&ch9344_minors_lock);
 }
+
+#else
+
+/*
+ * Look up an CH9344 structure by index. If found and not disconnected, increment
+ * its refcount and return it with its mutex held.
+ */
+static struct ch9344 *ch9344_get_by_index(unsigned int index)
+{
+	struct ch9344 *ch9344;
+
+	mutex_lock(&ch9344_minors_lock);
+	ch9344 = ch9344_table[index];
+	if (ch9344) {
+		mutex_lock(&ch9344->mutex);
+		if (ch9344->disconnected) {
+			mutex_unlock(&ch9344->mutex);
+			ch9344 = NULL;
+		} else {
+			tty_port_get(&ch9344->ttyport[ch9344_get_portnum(index)].port);
+			mutex_unlock(&ch9344->mutex);
+		}
+	}
+	mutex_unlock(&ch9344_minors_lock);
+
+	return ch9344;
+}
+
+/*
+ * Try to find an available minor number and if found, associate it with 'ch9344'.
+ */
+static int ch9344_alloc_minor(struct ch9344 *ch9344)
+{
+	int minor;
+
+	mutex_lock(&ch9344_minors_lock);
+	for (minor = 0; minor < CH9344_TTY_MINORS; minor++) {
+		if (!ch9344_table[minor]) {
+			ch9344_table[minor] = ch9344;
+			break;
+		}
+	}
+	mutex_unlock(&ch9344_minors_lock);
+
+	return minor;
+}
+
+/* Release the minor number associated with 'ch9344'. */
+static void ch9344_release_minor(struct ch9344 *ch9344)
+{
+	mutex_lock(&ch9344_minors_lock);
+	ch9344_table[ch9344->minor] = NULL;
+	mutex_unlock(&ch9344_minors_lock);
+}
+
+#endif
 
 static int ch9344_get_portnum(int index)
 {
@@ -403,6 +467,9 @@ static void ch9344_cmd_irq(struct urb *urb)
 	unsigned long flags;
 	int left = 0, right = 0;
 	u64 gpiovalins;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 10, 0))
+	struct tty_struct *tty;
+#endif
 
 	if (ch9344->chiptype == CHIP_CH9344) {
 		left = 4;
@@ -497,7 +564,13 @@ static void ch9344_cmd_irq(struct urb *urb)
 					if (!ch9344->ttyport[portnum].clocal &&
 					    (ch9344->ttyport[portnum].ctrlin & ~newctrl & CH9344_CTI_DC)) {
 						spin_unlock(&ch9344->read_lock);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 10, 0))
+						tty = tty_port_tty_get(&ch9344->ttyport[portnum].port);
+						tty_hangup(tty);
+						tty_kref_put(tty);
+#else
 						tty_port_tty_hangup(&ch9344->ttyport[portnum].port, false);
+#endif
 						spin_lock(&ch9344->read_lock);
 					}
 
@@ -607,6 +680,9 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 	int portnum;
 	u8 usblen;
 	int left = 0, right = 0;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0))
+	struct tty_struct *tty;
+#endif
 
 	if (ch9344->chiptype == CHIP_CH9344) {
 		left = 4;
@@ -632,9 +708,21 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 		if (usblen > 30) {
 			break;
 		}
-		ch9344->ttyport[portnum].iocount.rx += usblen;
-		tty_insert_flip_string(&ch9344->ttyport[portnum].port, buffer + i + 2, usblen);
-		tty_flip_buffer_push(&ch9344->ttyport[portnum].port);
+
+		if (ch9344->ttyport[portnum].isopen) {
+			ch9344->ttyport[portnum].iocount.rx += usblen;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0))
+			tty = tty_port_tty_get(&ch9344->ttyport[portnum].port);
+			if (tty) {
+				tty_insert_flip_string(tty, buffer + i + 2, usblen);
+				tty_flip_buffer_push(tty);
+				tty_kref_put(tty);
+			}
+#else
+			tty_insert_flip_string(&ch9344->ttyport[portnum].port, buffer + i + 2, usblen);
+			tty_flip_buffer_push(&ch9344->ttyport[portnum].port);
+#endif
+		}
 	}
 }
 
@@ -678,8 +766,17 @@ static void ch9344_write_bulk(struct urb *urb)
 static void ch9344_softint(struct work_struct *work)
 {
 	struct ch9344_ttyport *ttyport = container_of(work, struct ch9344_ttyport, work);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 10, 0))
+	struct tty_struct *tty;
 
+	tty = tty_port_tty_get(&ttyport->port);
+	if (!tty)
+		return;
+	tty_wakeup(tty);
+	tty_kref_put(tty);
+#else
 	tty_port_tty_wakeup(&ttyport->port);
+#endif
 }
 
 /*
@@ -690,15 +787,28 @@ static int ch9344_tty_install(struct tty_driver *driver, struct tty_struct *tty)
 	struct ch9344 *ch9344;
 	int retval;
 
-	ch9344 = ch9344_get_by_index(tty->index);
+	ch9344 = ch9344_get_by_index(tty->index/NUMSTEP);
 	if (!ch9344)
 		return -ENODEV;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0))
 	retval = tty_standard_install(driver, tty);
 	if (retval)
 		goto error_init_termios;
 
 	tty->driver_data = ch9344;
+#else
+	retval = tty_init_termios(tty);
+	if (retval)
+		goto error_init_termios;
+
+	tty->driver_data = ch9344;
+
+	/* Final install (we use the default method) */
+	tty_driver_kref_get(driver);
+	tty->count++;
+	driver->ttys[tty->index] = tty;
+#endif
 
 	return 0;
 
@@ -777,11 +887,15 @@ static int ch9344_port_activate(struct tty_port *port, struct tty_struct *tty)
 	if (retval)
 		goto error_configure;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
 	ch9344_tty_set_termios(tty, NULL);
+#endif
 
 	usb_autopm_put_interface(ch9344->data);
 
 	mutex_unlock(&ch9344->mutex);
+
+	ttyport->isopen = true;
 
 	return 0;
 
@@ -807,6 +921,13 @@ static void ch9344_port_destruct(struct tty_port *port)
 
 static void ch9344_port_shutdown(struct tty_port *port)
 {
+	struct ch9344_ttyport *ttyport = container_of(port, struct ch9344_ttyport, port);
+	struct ch9344 *ch9344 = tty_get_portdata(ttyport);
+	int portnum = ttyport->portnum;
+
+	ch9344_set_control(ch9344, portnum, 0x00);
+	ch9344_set_control(ch9344, portnum, 0x10);
+	ttyport->isopen = false;
 }
 
 static void ch9344_tty_cleanup(struct tty_struct *tty)
@@ -949,65 +1070,6 @@ transmit:
 		ch9344->ttyport[portnum].iocount.tx += sendlen;
 
 	return sendlen;
-}
-
-static void ch9344_tty_flush_chars(struct tty_struct *tty)
-{
-	struct ch9344 *ch9344 = tty->driver_data;
-	struct ch9344_wb *cur = ch9344->putbuffer;
-	int err;
-	unsigned long flags;
-
-	if (!cur)
-		return;
-
-	ch9344->putbuffer = NULL;
-	err = usb_autopm_get_interface_async(ch9344->data);
-	spin_lock_irqsave(&ch9344->write_lock, flags);
-	if (err < 0) {
-		cur->use = 0;
-		ch9344->putbuffer = cur;
-		goto out;
-	}
-
-	if (ch9344->susp_count)
-		usb_anchor_urb(cur->urb, &ch9344->delayed);
-	else
-		ch9344_start_wb(ch9344, cur);
-out:
-	spin_unlock_irqrestore(&ch9344->write_lock, flags);
-	return;
-}
-
-static int ch9344_tty_put_char(struct tty_struct *tty, unsigned char ch)
-{
-	struct ch9344 *ch9344 = tty->driver_data;
-	int portnum = ch9344_get_portnum(tty->index);
-	struct ch9344_wb *cur;
-	int wbn;
-	unsigned long flags;
-
-overflow:
-	cur = ch9344->putbuffer;
-	if (!cur) {
-		spin_lock_irqsave(&ch9344->write_lock, flags);
-		wbn = ch9344_wb_alloc(ch9344, portnum);
-		if (wbn >= 0) {
-			cur = &ch9344->wb[portnum][wbn];
-			ch9344->putbuffer = cur;
-		}
-		spin_unlock_irqrestore(&ch9344->write_lock, flags);
-		if (!cur)
-			return 0;
-	}
-
-	if (cur->len == ch9344->writesize) {
-		ch9344_tty_flush_chars(tty);
-		goto overflow;
-	}
-
-	cur->buf[cur->len++] = ch;
-	return 1;
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
@@ -1343,7 +1405,7 @@ static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum, u8 index, u8 
 	if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q)
 		goto out;
 
-	for (i = 0; i < MAXPORT; i++) {
+	for (i = 0; i < ch9344->num_ports; i++) {
 		if (i != index)
 			mode4 |= (ch9344->ttyport[i].uartmode) << (i * 2);
 	}
@@ -1724,7 +1786,11 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 #endif
 {
 	struct ch9344 *ch9344 = tty->driver_data;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
 	struct ktermios *termios = &tty->termios;
+#else
+	struct ktermios *termios = tty->termios;
+#endif
 	struct usb_ch9344_line_coding newline;
 	int portnum = ch9344_get_portnum(tty->index);
 	int newctrl = ch9344->ttyport[portnum].ctrlout;
@@ -1740,7 +1806,11 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 	u8 xor, rol;
 	u8 rbytes[2];
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
 	if (termios_old && !tty_termios_hw_change(&tty->termios, termios_old)) {
+#else
+	if (termios_old && !tty_termios_hw_change(tty->termios, termios_old)) {
+#endif
 		return;
 	}
 
@@ -1748,7 +1818,11 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 	if (!buffer) {
 		/* restore termios */
 		if (termios_old)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
 			tty->termios = *termios_old;
+#else
+			tty->termios = termios_old;
+#endif
 		return;
 	}
 
@@ -2249,10 +2323,20 @@ out:
 	return rv;
 }
 
+#ifdef CONFIG_COMPAT
+static long ch9344_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	return ch9344_ioctl(file, cmd, arg);
+}
+#endif
+
 static const struct file_operations ch9344_fops = {
 	.owner = THIS_MODULE,
 	.open = ch9344_open,
 	.unlocked_ioctl = ch9344_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = ch9344_compat_ioctl,
+#endif
 	.release = ch9344_release,
 };
 
@@ -2437,12 +2521,16 @@ static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *
 	usb_get_intf(data_interface);
 
 	for (i = 0; i < portnum; i++) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
 		tty_dev = tty_port_register_device(&ch9344->ttyport[i].port, ch9344_tty_driver, NUMSTEP * minor + i,
 						   &data_interface->dev);
 		if (IS_ERR(tty_dev)) {
 			rv = PTR_ERR(tty_dev);
 			goto alloc_fail7;
 		}
+#else
+		tty_register_device(ch9344_tty_driver, NUMSTEP * minor + i, &data_interface->dev);
+#endif
 	}
 
 	/* deal with urb when usb plugged in */
@@ -2695,7 +2783,9 @@ static struct usb_driver ch9344_driver = {
 #ifdef CONFIG_PM
 	.supports_autosuspend = 1,
 #endif
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0))
 	.disable_hub_initiated_lpm = 1,
+#endif
 };
 
 /*
@@ -2708,8 +2798,6 @@ static const struct tty_operations ch9344_ops = {
 	.cleanup = ch9344_tty_cleanup,
 	.hangup = ch9344_tty_hangup,
 	.write = ch9344_tty_write,
-	.put_char = ch9344_tty_put_char,
-	.flush_chars = ch9344_tty_flush_chars,
 	.write_room = ch9344_tty_write_room,
 	.ioctl = ch9344_tty_ioctl,
 	.chars_in_buffer = ch9344_tty_chars_in_buffer,
@@ -2778,7 +2866,10 @@ static void __exit ch9344_exit(void)
 #else
 	put_tty_driver(ch9344_tty_driver);
 #endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0))
 	idr_destroy(&ch9344_minors);
+#endif
 	printk(KERN_INFO KBUILD_MODNAME ": "
 					"ch9344 driver exit.\n");
 }
