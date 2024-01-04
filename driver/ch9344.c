@@ -64,7 +64,7 @@
 
 #define DRIVER_AUTHOR "WCH"
 #define DRIVER_DESC   "USB serial driver for ch9344/ch348."
-#define VERSION_DESC  "V2.1 On 2023.12"
+#define VERSION_DESC  "V2.1 On 2024.01"
 
 #define IOCTL_MAGIC	       'W'
 #define IOCTL_CMD_GPIOENABLE   _IOW(IOCTL_MAGIC, 0x80, u16)
