@@ -1827,8 +1827,6 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 	}
 
 	newline.dwDTERate = tty_get_baud_rate(tty);
-	if (newline.dwDTERate == 0)
-		newline.dwDTERate = 9600;
 	if (newline.dwDTERate > 115200) {
 		pedt = 0x01;
 		clrt = 44236800;
@@ -1909,9 +1907,9 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 
 	if (C_BAUD(tty) == B0) {
 		newline.dwDTERate = ch9344->ttyport[portnum].line.dwDTERate;
-		newctrl &= ~CH9344_CTO_D;
+		newctrl &= ~(CH9344_CTO_D | CH9344_CTO_R);
 	} else if (termios_old && (termios_old->c_cflag & CBAUD) == B0) {
-		newctrl |= CH9344_CTO_D;
+		newctrl |= CH9344_CTO_D | CH9344_CTO_R;
 	}
 
 	if (ch9344->chiptype == CHIP_CH9344) {
@@ -2828,7 +2826,7 @@ static int __init ch9344_init(void)
 	ch9344_tty_driver->flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
 #endif
 	ch9344_tty_driver->init_termios = tty_std_termios;
-	ch9344_tty_driver->init_termios.c_cflag = B9600 | CS8 | CREAD | HUPCL | CLOCAL;
+	ch9344_tty_driver->init_termios.c_cflag = B0 | CS8 | CREAD | HUPCL | CLOCAL;
 	tty_set_operations(ch9344_tty_driver, &ch9344_ops);
 
 	retval = tty_register_driver(ch9344_tty_driver);
