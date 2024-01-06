@@ -1827,6 +1827,8 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 	}
 
 	newline.dwDTERate = tty_get_baud_rate(tty);
+	if (newline.dwDTERate == 0)
+		newline.dwDTERate = 9600;
 	if (newline.dwDTERate > 115200) {
 		pedt = 0x01;
 		clrt = 44236800;
