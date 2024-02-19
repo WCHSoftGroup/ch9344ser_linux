@@ -29,7 +29,7 @@
  * V2.0 - add support for get_icount and ioctl operation
  *      - add support for kernel version beyond 6.3.x
  * V2.1 - remove put_char and flush_chars methods of tty_operations
- * V2.2 - add support for kernel version beyond 6.5.x
+ *      - add support for kernel version beyond 6.5.x
  */
 
 #define DEBUG
@@ -65,7 +65,7 @@
 
 #define DRIVER_AUTHOR "WCH"
 #define DRIVER_DESC   "USB serial driver for ch9344/ch348."
-#define VERSION_DESC  "V2.2 On 2024.02"
+#define VERSION_DESC  "V2.1 On 2024.02"
 
 #define IOCTL_MAGIC	       'W'
 #define IOCTL_CMD_GPIOENABLE   _IOW(IOCTL_MAGIC, 0x80, u16)
@@ -2885,5 +2885,6 @@ module_exit(ch9344_exit);
 
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);
+MODULE_VERSION(VERSION_DESC);
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_CHARDEV_MAJOR(CH9344_TTY_MAJOR);
