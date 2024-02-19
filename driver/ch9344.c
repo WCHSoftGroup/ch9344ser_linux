@@ -29,6 +29,7 @@
  * V2.0 - add support for get_icount and ioctl operation
  *      - add support for kernel version beyond 6.3.x
  * V2.1 - remove put_char and flush_chars methods of tty_operations
+ * V2.2 - add support for kernel version beyond 6.5.x
  */
 
 #define DEBUG
@@ -64,7 +65,7 @@
 
 #define DRIVER_AUTHOR "WCH"
 #define DRIVER_DESC   "USB serial driver for ch9344/ch348."
-#define VERSION_DESC  "V2.1 On 2024.01"
+#define VERSION_DESC  "V2.2 On 2024.02"
 
 #define IOCTL_MAGIC	       'W'
 #define IOCTL_CMD_GPIOENABLE   _IOW(IOCTL_MAGIC, 0x80, u16)
@@ -157,7 +158,7 @@ static struct ch9344 *ch9344_get_by_index(unsigned int index)
 	struct ch9344 *ch9344;
 
 	mutex_lock(&ch9344_minors_lock);
-	ch9344 = ch9344_table[index];
+	ch9344 = ch9344_table[index / NUMSTEP];
 	if (ch9344) {
 		mutex_lock(&ch9344->mutex);
 		if (ch9344->disconnected) {
@@ -787,7 +788,7 @@ static int ch9344_tty_install(struct tty_driver *driver, struct tty_struct *tty)
 	struct ch9344 *ch9344;
 	int retval;
 
-	ch9344 = ch9344_get_by_index(tty->index/NUMSTEP);
+	ch9344 = ch9344_get_by_index(tty->index);
 	if (!ch9344)
 		return -ENODEV;
 
@@ -958,7 +959,11 @@ static void ch9344_tty_close(struct tty_struct *tty, struct file *filp)
 	}
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0))
+static ssize_t ch9344_tty_write(struct tty_struct *tty, const u8 *buf, size_t count)
+#else
 static int ch9344_tty_write(struct tty_struct *tty, const unsigned char *buf, int count)
+#endif
 {
 	struct ch9344 *ch9344 = tty->driver_data;
 	int stat;
@@ -2521,6 +2526,7 @@ static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *
 	usb_get_intf(data_interface);
 
 	for (i = 0; i < portnum; i++) {
+		ch9344->ttyport[i].line.dwDTERate = 9600;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
 		tty_dev = tty_port_register_device(&ch9344->ttyport[i].port, ch9344_tty_driver, NUMSTEP * minor + i,
 						   &data_interface->dev);
