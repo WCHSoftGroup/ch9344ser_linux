@@ -1,5 +1,5 @@
 /*
- * ch9344 gpio application example for USB to Quad UARTs chip ch9344 and USB to Octal UARTs chip ch348.
+ * gpio application example for USB to Quad UARTs chip ch9344 and USB to Octal UARTs chip ch348.
  *
  * Copyright (C) 2023 Nanjing Qinheng Microelectronics Co., Ltd.
  * Web: http://wch.cn
