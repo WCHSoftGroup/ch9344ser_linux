@@ -74,6 +74,8 @@
 #define R_II_B2 0x02
 #define R_II_B3 0x00
 
+#define R_EE_CFG 0xA9
+
 #define CMD_VER 0x96
 
 #define CH9344_NW 4
@@ -82,6 +84,7 @@
 #define NUMSTEP 8
 #define MAXGPIO 48
 #define MAXPORT 8
+#define CFGLEN 256
 
 #define IO_H 1
 #define IO_L 0
@@ -191,6 +194,10 @@ struct ch9344 {
 	bool gpio_recv; /* gpio input sync flag */
 	wait_queue_head_t wgpioioctl; /* for gpio input ioctl */
 	struct mutex gpiomutex;
+	u8 cfgval[256];
+	bool cfg_recv;
+	u16 cfgindex;
+	wait_queue_head_t wcfgioctl; /* for config ioctl */
 	unsigned int writesize; /* max packet size for the output bulk endpoint */
 	unsigned int readsize, cmdsize; /* buffer sizes for freeing */
 	unsigned int ctrlsize;

@@ -76,6 +76,8 @@
 #define IOCTL_CMD_GETUARTINDEX _IOR(IOCTL_MAGIC, 0x85, u16)
 #define IOCTL_CMD_CTRLIN       _IOWR(IOCTL_MAGIC, 0x90, u16)
 #define IOCTL_CMD_CTRLOUT      _IOW(IOCTL_MAGIC, 0x91, u16)
+#define IOCTL_CMD_CMDIN	       _IOWR(IOCTL_MAGIC, 0x92, u16)
+#define IOCTL_CMD_CMDOUT       _IOW(IOCTL_MAGIC, 0x93, u16)
 
 static struct usb_driver ch9344_driver;
 static struct tty_driver *ch9344_tty_driver;
@@ -97,6 +99,8 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 static int ch9344_get_portnum(int index);
 
 static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum, u8 index, u8 mode);
+
+static int ch9344_cmd_out(struct ch9344 *ch9344, u8 *buf, int count);
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0))
 
@@ -211,61 +215,123 @@ static int ch9344_get_portnum(int index)
 /*
  * Functions for control messages.
  */
-static int ch9344_control_out(struct ch9344 *ch9344, u8 request, u16 value, u16 index)
+static int ch9344_control_out(struct ch9344 *ch9344, u8 request, u8 requesttype, u16 value, u16 index, void *buf,
+			      unsigned bufsize)
 {
 	int retval;
+	char *buffer;
+
+	buffer = kmalloc(bufsize, GFP_KERNEL);
+	if (!buffer)
+		return -ENOMEM;
+
+	retval = copy_from_user(buffer, (char __user *)buf, bufsize);
+	if (retval)
+		goto out;
 
 	retval = usb_autopm_get_interface(ch9344->data);
 	if (retval)
-		return retval;
-
-	retval = usb_control_msg(ch9344->dev, usb_sndctrlpipe(ch9344->dev, 0), request,
-				 USB_TYPE_VENDOR | USB_RECIP_DEVICE | USB_DIR_OUT, value, index, NULL, 0,
-				 DEFAULT_TIMEOUT);
-
+		goto out;
+	retval = usb_control_msg(ch9344->dev, usb_sndctrlpipe(ch9344->dev, 0), request, requesttype, value, index,
+				 buffer, bufsize, DEFAULT_TIMEOUT);
 	usb_autopm_put_interface(ch9344->data);
 
-	return retval < 0 ? retval : 0;
+out:
+	kfree(buffer);
+	return retval;
 }
 
-static int ch9344_control_in(struct ch9344 *ch9344, u8 request, u16 value, u16 index, char *buf, unsigned bufsize)
+static int ch9344_control_in(struct ch9344 *ch9344, u8 request, u8 requesttype, u16 value, u16 index, char *buf,
+			     unsigned bufsize)
 {
-	int retval;
+	int retval = 0;
+	char *buffer;
+
+	buffer = kmalloc(bufsize, GFP_KERNEL);
+	if (!buffer)
+		return -ENOMEM;
 
 	retval = usb_autopm_get_interface(ch9344->data);
 	if (retval)
-		return retval;
-
-	retval = usb_control_msg(ch9344->dev, usb_rcvctrlpipe(ch9344->dev, 0), request,
-				 USB_TYPE_VENDOR | USB_RECIP_DEVICE | USB_DIR_IN, value, index, buf, bufsize,
-				 DEFAULT_TIMEOUT);
+		goto out;
+	retval = usb_control_msg(ch9344->dev, usb_rcvctrlpipe(ch9344->dev, 0), request, requesttype, value, index, buf,
+				 bufsize, DEFAULT_TIMEOUT);
 
 	usb_autopm_put_interface(ch9344->data);
 
+out:
+	kfree(buffer);
 	return retval;
 }
 
 /*
  * Functions for CH9344 cmd messages.
  */
+static int ch9344_cmd_in(struct ch9344 *ch9344, void *sbuf, int count, void *rbuf)
+{
+	u8 *buffer;
+	int ret;
+
+	buffer = kzalloc(count, GFP_KERNEL);
+	if (!buffer)
+		return -ENOMEM;
+
+	ret = copy_from_user(buffer, (char __user *)sbuf, count);
+	if (ret)
+		goto out;
+
+	ret = ch9344_cmd_out(ch9344, buffer, count);
+	if (ret < 0)
+		goto out;
+
+	ret = wait_event_interruptible_timeout(ch9344->wcfgioctl, ch9344->cfg_recv, msecs_to_jiffies(DEFAULT_TIMEOUT));
+	if (ret == 0) {
+		ret = -ETIMEDOUT;
+		goto out;
+	}
+
+	if (ret < 0)
+		goto out;
+
+	ret = ch9344->cfgindex;
+
+	ch9344->cfgindex = 0;
+
+	if (copy_to_user((char __user *)rbuf, ch9344->cfgval, ret)) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	ch9344->cfg_recv = false;
+
+out:
+	kfree(buffer);
+	return ret;
+}
+
 static int ch9344_cmd_out(struct ch9344 *ch9344, u8 *buf, int count)
 {
-	int retval, actual_len;
+	int retval = 0, actual_len = 0;
 
-	retval = usb_bulk_msg(ch9344->dev, ch9344->cmdtx_endpoint, buf, min((unsigned int)count, ch9344->cmdsize),
-			      &actual_len, DEFAULT_TIMEOUT);
+	retval = usb_autopm_get_interface(ch9344->data);
+	if (retval)
+		goto out;
 
+	retval = usb_bulk_msg(ch9344->dev, ch9344->cmdtx_endpoint, buf, count, &actual_len, DEFAULT_TIMEOUT);
+	usb_autopm_put_interface(ch9344->data);
 	if (retval) {
 		dev_err(&ch9344->data->dev, "usb_bulk_msg(send) failed, err %i\n", retval);
-		return retval;
+		goto out;
 	}
 
 	if (actual_len != count) {
 		dev_err(&ch9344->data->dev, "only wrote %d of %d bytes\n", actual_len, count);
-		return -1;
+		retval = -EPIPE;
+		goto out;
 	}
 
-	return actual_len;
+out:
+	return retval;
 }
 
 static inline int ch9344_set_control(struct ch9344 *ch9344, int portnum, int control)
@@ -304,7 +370,7 @@ static inline int ch9344_set_control(struct ch9344 *ch9344, int portnum, int con
 
 static inline int ch9344_enum_chiptype(struct ch9344 *ch9344, bool ignore)
 {
-	char *buffer;
+	unsigned char *buffer;
 	int retval;
 	const unsigned size = 4;
 
@@ -312,7 +378,8 @@ static inline int ch9344_enum_chiptype(struct ch9344 *ch9344, bool ignore)
 	if (!buffer)
 		return -ENOMEM;
 
-	retval = ch9344_control_in(ch9344, CMD_VER, 0x0000, 0, buffer, size);
+	retval = ch9344_control_in(ch9344, CMD_VER, USB_TYPE_VENDOR | USB_RECIP_DEVICE | USB_DIR_IN, 0x00, 0x00, buffer,
+				   size);
 	if (retval < 0)
 		goto out;
 
@@ -616,6 +683,20 @@ static void ch9344_cmd_irq(struct urb *urb)
 					spin_unlock(&ch9344->read_lock);
 				} else
 					break;
+			} else if (reg_iir == R_EE_CFG) {
+				if (*(data + i) == CMD_W_R) {
+					spin_lock_irqsave(&ch9344->write_lock, flags);
+					if (ch9344->cfgindex + 0x04 > CFGLEN)
+						ch9344->cfgindex = 0;
+					memcpy(ch9344->cfgval + ch9344->cfgindex, data + i, 0x04);
+					ch9344->cfgindex += 0x04;
+					ch9344->cfg_recv = true;
+					wake_up_interruptible(&ch9344->wcfgioctl);
+					spin_unlock_irqrestore(&ch9344->write_lock, flags);
+				} else
+					break;
+				i += 4;
+				continue;
 			} else {
 				dev_dbg(&ch9344->data->dev, "%s - wrong status received", __func__);
 			}
@@ -1251,7 +1332,7 @@ static int ch348_gpioenable(struct ch9344 *ch9344, u8 gpiogroup, u8 gpioenable)
 	*(buffer + 9 - gpiogroup) = gpioenable;
 
 	ret = ch9344_cmd_out(ch9344, buffer, 0x0a);
-	if (ret >= 0) {
+	if (ret == 0) {
 		memcpy(&gpioenables, buffer + 2, 0x08);
 		ch9344->gpioenables = be64_to_cpu(gpioenables);
 	}
@@ -1289,7 +1370,7 @@ static int ch348_set_gpiodir(struct ch9344 *ch9344, u8 gpionumber, u8 gpiodir)
 
 	ret = ch9344_cmd_out(ch9344, buffer, 0x0a);
 	kfree(buffer);
-	if (ret >= 0)
+	if (ret == 0)
 		ch9344->gpiodirs = gpiodirs;
 
 	return ret < 0 ? ret : 0;
@@ -1324,7 +1405,7 @@ static int ch348_set_gpioval(struct ch9344 *ch9344, u8 gpionumber, u8 gpioval)
 
 	ret = ch9344_cmd_out(ch9344, buffer, 0x0a);
 	kfree(buffer);
-	if (ret >= 0)
+	if (ret == 0)
 		ch9344->gpiovals = gpiovals;
 
 	return ret < 0 ? ret : 0;
@@ -1655,12 +1736,10 @@ static int ch9344_tty_ioctl(struct tty_struct *tty, unsigned int cmd, unsigned l
 	u16 __user *argval = (u16 __user *)arg;
 	int portnum = ch9344_get_portnum(tty->index);
 
-	unsigned long arg1;
-	unsigned long arg2;
-	unsigned long arg3;
+	unsigned long arg1, arg2, arg3, arg4, arg5, arg6;
 	u8 *buffer;
 
-	buffer = kmalloc(8, GFP_KERNEL);
+	buffer = kmalloc(512, GFP_KERNEL);
 	if (!buffer)
 		return -ENOMEM;
 
@@ -1697,21 +1776,45 @@ static int ch9344_tty_ioctl(struct tty_struct *tty, unsigned int cmd, unsigned l
 		} else
 			rv = 0;
 		break;
-	case IOCTL_CMD_CTRLIN:
-		get_user(arg1, (long __user *)arg);
-		get_user(arg2, ((long __user *)arg + 1));
-		rv = ch9344_control_in(ch9344, (u8)arg1, 0x00, 0x00, buffer, 0x08);
-		if (rv <= 0) {
-			rv = -EINVAL;
+	case IOCTL_CMD_CMDIN:
+		get_user(arg1, (u16 __user *)arg);
+		arg2 = (unsigned long)((u8 __user *)arg + 2);
+		arg3 = (unsigned long)((u8 __user *)arg + 2 + 256);
+		rv = ch9344_cmd_in(ch9344, (u8 __user *)arg3, (int)arg1, (u8 __user *)arg2);
+		break;
+	case IOCTL_CMD_CMDOUT:
+		get_user(arg1, (u16 __user *)arg);
+		arg2 = (unsigned long)((u8 __user *)arg + 2);
+		rv = copy_from_user(buffer, (u8 __user *)arg2, arg1);
+		if (rv)
 			goto out;
-		}
-		rv = copy_to_user((char __user *)arg2, (char *)buffer, rv);
+		rv = ch9344_cmd_out(ch9344, buffer, (int)arg1);
+		break;
+	case IOCTL_CMD_CTRLIN:
+		get_user(arg1, (u8 __user *)arg);
+		get_user(arg2, ((u8 __user *)arg + 1));
+		get_user(arg3, (u16 __user *)((u8 *)arg + 2));
+		get_user(arg4, (u16 __user *)((u8 *)arg + 4));
+		get_user(arg5, (u16 __user *)((u8 *)arg + 6));
+		arg6 = (unsigned long)((u8 __user *)arg + 8);
+		rv = copy_from_user(buffer, (u8 __user *)arg6, arg5);
+		if (rv)
+			goto out;
+		rv = ch9344_control_in(ch9344, (u8)arg1, (u8)arg2, (u16)arg3, (u16)arg4, (u8 __user *)buffer, (u16)arg5);
 		break;
 	case IOCTL_CMD_CTRLOUT:
-		get_user(arg1, (long __user *)arg);
-		get_user(arg2, ((long __user *)arg + 1));
-		get_user(arg3, ((long __user *)arg + 2));
-		rv = ch9344_control_out(ch9344, (u8)arg1, (u16)arg2, (u16)arg3);
+		get_user(arg1, (u8 __user *)arg);
+		get_user(arg2, ((u8 __user *)arg + 1));
+		get_user(arg3, (u16 __user *)((u8 *)arg + 2));
+		get_user(arg4, (u16 __user *)((u8 *)arg + 4));
+		get_user(arg5, (u16 __user *)((u8 *)arg + 6));
+		arg6 = (unsigned long)((u8 __user *)arg + 8);
+		rv = ch9344_control_out(ch9344, (u8)arg1, (u8)arg2, (u16)arg3, (u16)arg4, (u8 __user *)arg6, (u16)arg5);
+		if (rv != (u16)arg5) {
+			rv = -EINVAL;
+			goto out;
+		} else
+			rv = 0;
 		break;
 	default:
 		break;
@@ -2421,6 +2524,7 @@ static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *
 	ch9344->readsize = readsize;
 	ch9344->rx_buflimit = num_rx_buf;
 
+	init_waitqueue_head(&ch9344->wcfgioctl);
 	init_waitqueue_head(&ch9344->wgpioioctl);
 	spin_lock_init(&ch9344->write_lock);
 	spin_lock_init(&ch9344->read_lock);
@@ -2639,6 +2743,7 @@ static void ch9344_disconnect(struct usb_interface *intf)
 
 	mutex_lock(&ch9344->mutex);
 	ch9344->disconnected = true;
+	wake_up_interruptible(&ch9344->wcfgioctl);
 	wake_up_interruptible(&ch9344->wgpioioctl);
 	usb_set_intfdata(ch9344->data, NULL);
 	mutex_unlock(&ch9344->mutex);
