@@ -1,7 +1,7 @@
 /*
  * gpio application example for USB to Quad UARTs chip ch9344 and USB to Octal UARTs chip ch348.
  *
- * Copyright (C) 2023 Nanjing Qinheng Microelectronics Co., Ltd.
+ * Copyright (C) 2024 Nanjing Qinheng Microelectronics Co., Ltd.
  * Web: http://wch.cn
  * Author: WCH <tech@wch.cn>
  *
@@ -11,12 +11,11 @@
  *
  * Cross-compile with cross-gcc -I /path/to/cross-kernel/include
  *
- * Version: V1.2
- *
  * Update Log:
  * V1.0 - initial version
  * V1.1 - add support for ch348
  * V1.2 - modify gpio operation
+ * V1.3 - add support for ch9344q
  */
 
 #include <stdint.h>
@@ -27,7 +26,7 @@
 
 #include "ch9344_lib.h"
 
-static CHIPTYPE chiptype;
+static CH9344_CHIPTYPE chiptype;
 static int gpiocount;
 static int gpiogroup;
 
@@ -68,7 +67,7 @@ void libch9344_gpiotest(int fd)
 		switch (c) {
 		case 'e':
 			for (i = 0; i < gpiogroup; i++) {
-				if (chiptype == CHIP_CH9344)
+				if (chiptype == CHIP_CH9344L || chiptype == CHIP_CH9344Q)
 					ret = libch9344_gpioenable(fd, i, 0x01);
 				else
 					ret = libch9344_gpioenable(fd, i, 0xff);
@@ -150,9 +149,9 @@ int main(int argc, char *argv[])
 	}
 
 	if (!strstr(argv[1], "iodev")) {
-        printf("the gpio device is named ch9344_iodev*\n");
-        return -1;
-    }
+		printf("the gpio device is named ch9344_iodev*\n");
+		return -1;
+	}
 
 	fd = libch9344_open(argv[1]);
 	if (fd < 0) {
