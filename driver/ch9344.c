@@ -30,6 +30,8 @@
  *      - add support for kernel version beyond 6.3.x
  * V2.1 - remove put_char and flush_chars methods of tty_operations
  *      - add support for kernel version beyond 6.5.x
+ * V2.2 - add support for ch9344q
+ *      - update modem status when uart open
  */
 
 #define DEBUG
@@ -65,7 +67,7 @@
 
 #define DRIVER_AUTHOR "WCH"
 #define DRIVER_DESC   "USB serial driver for ch9344/ch348."
-#define VERSION_DESC  "V2.1 On 2024.02"
+#define VERSION_DESC  "V2.2 On 2024.06"
 
 #define IOCTL_MAGIC	       'W'
 #define IOCTL_CMD_GPIOENABLE   _IOW(IOCTL_MAGIC, 0x80, u16)
@@ -341,7 +343,7 @@ static inline int ch9344_set_control(struct ch9344 *ch9344, int portnum, int con
 	const unsigned size = 3;
 	u8 rgadd = 0;
 
-	if (ch9344->chiptype == CHIP_CH9344)
+	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q)
 		rgadd = 0x10 * portnum + 0x08;
 	else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
 		if (portnum < 4)
@@ -368,7 +370,7 @@ static inline int ch9344_set_control(struct ch9344 *ch9344, int portnum, int con
 	return retval < 0 ? retval : 0;
 }
 
-static inline int ch9344_enum_chiptype(struct ch9344 *ch9344, bool ignore)
+static inline int ch9344_enum_chiptype(struct ch9344 *ch9344)
 {
 	unsigned char *buffer;
 	int retval;
@@ -384,12 +386,17 @@ static inline int ch9344_enum_chiptype(struct ch9344 *ch9344, bool ignore)
 		goto out;
 
 	if (retval == 4) {
-		if (ignore)
-			goto out;
-		if (buffer[1] & (0x02 << 6))
-			ch9344->chiptype = CHIP_CH348Q;
-		else
-			ch9344->chiptype = CHIP_CH348L;
+		if (ch9344->idProduct == 0xe018) {
+			if (buffer[0] >= 0x40)
+				ch9344->chiptype = CHIP_CH9344Q;
+			else
+				ch9344->chiptype = CHIP_CH9344L;
+		} else {
+			if (buffer[1] & (0x02 << 6))
+				ch9344->chiptype = CHIP_CH348Q;
+			else
+				ch9344->chiptype = CHIP_CH348L;
+		}
 	} else
 		retval = -EPROTO;
 
@@ -410,7 +417,7 @@ static int ch9344_configure(struct ch9344 *ch9344, int portnum)
 		return -ENOMEM;
 
 	request = CMD_W_R;
-	if (ch9344->chiptype == CHIP_CH9344)
+	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q)
 		rgadd = 0x10 * portnum + 0x08;
 	else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
 		if (portnum < 4)
@@ -426,7 +433,7 @@ static int ch9344_configure(struct ch9344 *ch9344, int portnum)
 	if (ret < 0)
 		goto out;
 
-	if (ch9344->chiptype == CHIP_CH9344) {
+	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
 		buffer[1] = rgadd + R_C3;
 		buffer[2] = 0x03;
 		ret = ch9344_cmd_out(ch9344, buffer, 0x03);
@@ -439,6 +446,7 @@ static int ch9344_configure(struct ch9344 *ch9344, int portnum)
 	ret = ch9344_cmd_out(ch9344, buffer, 0x03);
 	if (ret < 0)
 		goto out;
+
 out:
 	kfree(buffer);
 	return ret < 0 ? ret : 0;
@@ -528,7 +536,7 @@ static void ch9344_cmd_irq(struct urb *urb)
 	int status = urb->status;
 	int i;
 	int portnum;
-	u8 reg_iir;
+	u8 reg_iir, rgadd;
 	int ctrlval;
 	int newctrl;
 	int difference;
@@ -539,7 +547,7 @@ static void ch9344_cmd_irq(struct urb *urb)
 	struct tty_struct *tty;
 #endif
 
-	if (ch9344->chiptype == CHIP_CH9344) {
+	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
 		left = 4;
 		right = 8;
 	} else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
@@ -553,6 +561,16 @@ static void ch9344_cmd_irq(struct urb *urb)
 		for (i = 0; i < len;) {
 			reg_iir = *(data + i + 1);
 			portnum = *(data + i) & 0x0f;
+
+			if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q)
+				rgadd = 0x10 * portnum + 0x08;
+			else {
+				if (portnum < 4)
+					rgadd = 0x10 * portnum;
+				else
+					rgadd = 0x10 * (portnum - 4) + 0x08;
+			}
+
 			if (reg_iir == R_INIT) {
 				i += 12;
 				continue;
@@ -592,14 +610,18 @@ static void ch9344_cmd_irq(struct urb *urb)
 					spin_unlock_irqrestore(&ch9344->write_lock, flags);
 				} else
 					break;
-			} else if ((reg_iir & 0x0f) == R_II_B3) {
+			} else if (((reg_iir & 0x0f) == R_II_B3) ||
+				   ((reg_iir == VEN_R) && (*(data + i + 2) == (rgadd | 0x06)))) {
 				if ((portnum >= left) && (portnum < right)) {
 					portnum -= ch9344->port_offset;
 
 					spin_lock(&ch9344->read_lock);
 					newctrl = ch9344->ttyport[portnum].ctrlin;
 					/* modem signal */
-					ctrlval = *(data + i + 2);
+					if ((reg_iir & 0x0f) == R_II_B3)
+						ctrlval = *(data + i + 2);
+					else
+						ctrlval = *(data + i + 3) | 0x0f;
 					if (ctrlval & CH9344_CTI_C) {
 						if (ctrlval & (CH9344_CTI_C << 4)) {
 							newctrl |= CH9344_CTI_C;
@@ -766,7 +788,7 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 	struct tty_struct *tty;
 #endif
 
-	if (ch9344->chiptype == CHIP_CH9344) {
+	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
 		left = 4;
 		right = 8;
 	} else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
@@ -1204,7 +1226,7 @@ static int ch9344_tty_break_ctl(struct tty_struct *tty, int state)
 	const unsigned size = 3;
 	u8 rgadd = 0;
 
-	if (ch9344->chiptype == CHIP_CH9344)
+	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q)
 		rgadd = 0x10 * portnum + 0x08;
 	else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
 		if (portnum < 4)
@@ -1457,7 +1479,7 @@ static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum, u8 index, u8 
 	u8 mode4 = 0;
 	int i;
 
-	if (ch9344->chiptype == CHIP_CH9344)
+	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q)
 		rgadd = 0x10 * portnum + 0x08;
 	else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
 		if (portnum < 4)
@@ -1800,7 +1822,8 @@ static int ch9344_tty_ioctl(struct tty_struct *tty, unsigned int cmd, unsigned l
 		rv = copy_from_user(buffer, (u8 __user *)arg6, arg5);
 		if (rv)
 			goto out;
-		rv = ch9344_control_in(ch9344, (u8)arg1, (u8)arg2, (u16)arg3, (u16)arg4, (u8 __user *)buffer, (u16)arg5);
+		rv = ch9344_control_in(ch9344, (u8)arg1, (u8)arg2, (u16)arg3, (u16)arg4, (u8 __user *)buffer,
+				       (u16)arg5);
 		break;
 	case IOCTL_CMD_CTRLOUT:
 		get_user(arg1, (u8 __user *)arg);
@@ -2022,7 +2045,7 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 		newctrl |= CH9344_CTO_D | CH9344_CTO_R;
 	}
 
-	if (ch9344->chiptype == CHIP_CH9344) {
+	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
 		rgadd = 0x10 * ch9344_get_portnum(tty->index) + 0x08;
 
 		memset(buffer, 0x00, ch9344->cmdsize);
@@ -2033,15 +2056,30 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 		if (ret < 0)
 			goto out;
 
-		memset(buffer, 0x00, ch9344->cmdsize);
-		buffer[0] = CMD_S_T;
-		buffer[1] = rgadd + 0x03;
-		buffer[2] = bd1;
-		buffer[3] = bd2;
-		buffer[4] = bd3;
-		ret = ch9344_cmd_out(ch9344, buffer, 0x06);
-		if (ret < 0)
-			goto out;
+		if (ch9344->chiptype == CHIP_CH9344L) {
+			memset(buffer, 0x00, ch9344->cmdsize);
+			buffer[0] = CMD_S_T;
+			buffer[1] = rgadd + 0x03;
+			buffer[2] = bd1;
+			buffer[3] = bd2;
+			buffer[4] = bd3;
+			ret = ch9344_cmd_out(ch9344, buffer, 0x06);
+			if (ret < 0)
+				goto out;
+		} else {
+			buffer[0] = CMD_S_T;
+			buffer[1] = rgadd + 0x03;
+			buffer[2] = 0x00;
+			buffer[3] = 0x00;
+			buffer[4] = 0x00;
+			buffer[5] = (char)(newline.dwDTERate);
+			buffer[6] = (char)(newline.dwDTERate >> 8);
+			buffer[7] = (char)(newline.dwDTERate >> 16);
+			buffer[8] = (char)(newline.dwDTERate >> 24);
+			ret = ch9344_cmd_out(ch9344, buffer, 0x09);
+			if (ret < 0)
+				goto out;
+		}
 
 		memset(buffer, 0x00, ch9344->cmdsize);
 		buffer[0] = CMD_W_R;
@@ -2086,7 +2124,7 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 			goto out;
 	}
 
-	if (ch9344->chiptype == CHIP_CH9344)
+	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q)
 		rgadd = 0x10 * portnum + 0x08;
 	else {
 		if (portnum < 4)
@@ -2137,6 +2175,13 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 			}
 		}
 	}
+
+	buffer[0] = CMD_WB_E;
+	buffer[1] = VEN_R;
+	buffer[2] = rgadd | 0x06;
+	ret = ch9344_cmd_out(ch9344, buffer, 0x03);
+	if (ret < 0)
+		goto out;
 
 out:
 	kfree(buffer);
@@ -2282,7 +2327,7 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 		inargH = inarg >> 8;
 		inargL = inarg;
-		if (ch9344->chiptype == CHIP_CH9344) {
+		if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
 			portindex = inargH;
 			if (inargL)
 				uartmode = M_IO;
@@ -2321,7 +2366,7 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		/* inargH indicates gpio number, inargL indicates gpio direction */
 		inargH = inarg >> 8;
 		inargL = inarg;
-		if (ch9344->chiptype == CHIP_CH9344) {
+		if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
 			gpionumber = inargH;
 			gpiogroup = gpionumber / 3;
 			if (inargL)
@@ -2356,7 +2401,7 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		/* inargH indicates gpio number, inargL indicates gpio output value */
 		inargH = inarg >> 8;
 		inargL = inarg;
-		if (ch9344->chiptype == CHIP_CH9344) {
+		if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
 			gpionumber = inargH;
 			gpiogroup = gpionumber / 3;
 			if (inargL)
@@ -2390,7 +2435,7 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		/* inargH indicates gpio number, inargL indicates gpio output value */
 		inargH = inarg >> 8;
 		inargL = inarg;
-		if (ch9344->chiptype == CHIP_CH9344) {
+		if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
 			gpionumber = inargH;
 			gpiogroup = gpionumber / 3;
 			if ((gpionumber > MAXGPIO) || (ch9344->ttyport[gpiogroup].uartmode != M_IO) ||
@@ -2535,14 +2580,14 @@ static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *
 	ch9344->tx_endpoint = usb_sndbulkpipe(usb_dev, epwrite->bEndpointAddress);
 	ch9344->cmdrx_endpoint = usb_rcvbulkpipe(usb_dev, epcmdread->bEndpointAddress);
 	ch9344->cmdtx_endpoint = usb_sndbulkpipe(usb_dev, epcmdwrite->bEndpointAddress);
-	if (id->idProduct == 0xe018) {
-		rv = ch9344_enum_chiptype(ch9344, true);
+	ch9344->idProduct = id->idProduct;
+	if (ch9344->idProduct == 0xe018) {
+		rv = ch9344_enum_chiptype(ch9344);
 		if (rv < 0)
 			goto enum_fail;
-		ch9344->chiptype = CHIP_CH9344;
 		portnum = ch9344->num_ports = ch9344->port_offset = 4;
-	} else if (id->idProduct == 0x55d9) {
-		rv = ch9344_enum_chiptype(ch9344, false);
+	} else if (ch9344->idProduct == 0x55d9) {
+		rv = ch9344_enum_chiptype(ch9344);
 		if (rv < 0)
 			goto enum_fail;
 		portnum = ch9344->num_ports = 8;
@@ -2939,7 +2984,7 @@ static int __init ch9344_init(void)
 	ch9344_tty_driver->flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
 #endif
 	ch9344_tty_driver->init_termios = tty_std_termios;
-	ch9344_tty_driver->init_termios.c_cflag = B0 | CS8 | CREAD | HUPCL | CLOCAL;
+	ch9344_tty_driver->init_termios.c_cflag = B50 | CS8 | CREAD | HUPCL | CLOCAL;
 	tty_set_operations(ch9344_tty_driver, &ch9344_ops);
 
 	retval = tty_register_driver(ch9344_tty_driver);
