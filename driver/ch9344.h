@@ -1,3 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ *
+ * Includes for ch9344.c
+ *
+ */
+
 #ifndef _CH9344_H
 #define _CH9344_H
 
@@ -127,7 +134,7 @@ struct usb_ch9344_line_coding {
 #define PAS 4
 
 	__u8 bDataBits;
-} __attribute__((packed));
+} __packed;
 
 struct ch9344_ttyport {
 	struct tty_port port;
@@ -147,12 +154,12 @@ struct ch9344_ttyport {
 	struct work_struct work; /* work queue entry for line discipline waking up */
 };
 
-typedef enum {
+enum CHIPTYPE {
 	CHIP_CH9344L = 0,
 	CHIP_CH9344Q,
 	CHIP_CH348L,
 	CHIP_CH348Q,
-} CHIPTYPE;
+};
 
 struct ch9344 {
 	struct usb_device *dev;	       /* the corresponding usb device */
@@ -161,7 +168,7 @@ struct ch9344 {
 	unsigned int num_ports;
 	bool modeline9;
 	struct ch9344_ttyport ttyport[MAXPORT]; /* our tty port data */
-	CHIPTYPE chiptype;
+	enum CHIPTYPE chiptype;
 	int port_offset;
 
 	__le16 idVendor;
