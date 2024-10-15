@@ -32,7 +32,7 @@
  *      - add support for kernel version beyond 6.3.x
  * V2.1 - remove put_char and flush_chars methods of tty_operations
  *      - add support for kernel version beyond 6.5.x
- * V2.2 - add support for ch9344q
+ *      - add support for ch9344q
  *      - update modem status when uart open
  */
 
@@ -69,7 +69,7 @@
 
 #define DRIVER_AUTHOR "WCH"
 #define DRIVER_DESC "USB serial driver for ch9344/ch348."
-#define VERSION_DESC "V2.2 On 2024.06"
+#define VERSION_DESC "V2.1 On 2024.10"
 
 #define IOCTL_MAGIC 'W'
 #define IOCTL_CMD_GPIOENABLE _IOW(IOCTL_MAGIC, 0x80, u16)
@@ -2509,19 +2509,25 @@ exit:
 
 static int ch9344_release(struct inode *inode, struct file *file)
 {
-	struct ch9344 *ch9344;
+	struct ch9344 *ch9344 = file->private_data;
 
-	ch9344 = file->private_data;
 	if (ch9344 == NULL)
 		return -ENODEV;
 
+	mutex_lock(&ch9344->mutex);
+
+	if (ch9344->disconnected) {
+		mutex_unlock(&ch9344->mutex);
+		return -ENODEV;
+	}
+	mutex_unlock(&ch9344->mutex);
 	return 0;
 }
 
 static long ch9344_ioctl(struct file *file, unsigned int cmd,
 			 unsigned long arg)
 {
-	struct ch9344 *ch9344;
+	struct ch9344 *ch9344 = file->private_data;
 	int rv = -ENOIOCTLCMD;
 	u8 uartmode;
 	int i;
@@ -2536,13 +2542,21 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd,
 	u8 portindex;
 	u8 *buffer;
 
-	ch9344 = file->private_data;
 	if (ch9344 == NULL)
 		return -ENODEV;
 
+	mutex_lock(&ch9344->mutex);
+
+	if (ch9344->disconnected) {
+		rv = -ENODEV;
+		goto out_unfree;
+	}
+
 	buffer = kmalloc(8, GFP_KERNEL);
-	if (!buffer)
-		return -ENOMEM;
+	if (!buffer) {
+		rv = -ENOMEM;
+		goto out_unfree;
+	}
 
 	switch (cmd) {
 	case IOCTL_CMD_GETCHIPTYPE:
@@ -2707,7 +2721,6 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd,
 						  IO_L;
 				if (put_user(gpioval, argval)) {
 					rv = -EFAULT;
-					goto out;
 				}
 			}
 			mutex_unlock(&ch9344->gpiomutex);
@@ -2723,7 +2736,6 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd,
 						  IO_L;
 				if (put_user(gpioval, argval)) {
 					rv = -EFAULT;
-					goto out;
 				}
 			}
 			mutex_unlock(&ch9344->gpiomutex);
@@ -2735,6 +2747,9 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd,
 
 out:
 	kfree(buffer);
+out_unfree:
+	mutex_unlock(&ch9344->mutex);
+
 	return rv;
 }
 
