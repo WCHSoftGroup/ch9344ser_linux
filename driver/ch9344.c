@@ -1,5 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
- * USB serial driver for USB to Quad UARTs chip ch9344 and USB to Octal UARTs chip ch348.
+ * USB serial driver for USB to Quad UARTs chip ch9344 and
+ * USB to Octal UARTs chip ch348.
  *
  * Copyright (C) 2024 Nanjing Qinheng Microelectronics Co., Ltd.
  * Web: http://wch.cn
@@ -30,7 +32,7 @@
  *      - add support for kernel version beyond 6.3.x
  * V2.1 - remove put_char and flush_chars methods of tty_operations
  *      - add support for kernel version beyond 6.5.x
- * V2.2 - add support for ch9344q
+ *      - add support for ch9344q
  *      - update modem status when uart open
  */
 
@@ -66,20 +68,20 @@
 #include "ch9344.h"
 
 #define DRIVER_AUTHOR "WCH"
-#define DRIVER_DESC   "USB serial driver for ch9344/ch348."
-#define VERSION_DESC  "V2.2 On 2024.06"
+#define DRIVER_DESC "USB serial driver for ch9344/ch348."
+#define VERSION_DESC "V2.1 On 2024.10"
 
-#define IOCTL_MAGIC	       'W'
-#define IOCTL_CMD_GPIOENABLE   _IOW(IOCTL_MAGIC, 0x80, u16)
-#define IOCTL_CMD_GPIODIR      _IOW(IOCTL_MAGIC, 0x81, u16)
-#define IOCTL_CMD_GPIOSET      _IOW(IOCTL_MAGIC, 0x82, u16)
-#define IOCTL_CMD_GPIOGET      _IOWR(IOCTL_MAGIC, 0x83, u16)
-#define IOCTL_CMD_GETCHIPTYPE  _IOR(IOCTL_MAGIC, 0x84, u16)
+#define IOCTL_MAGIC 'W'
+#define IOCTL_CMD_GPIOENABLE _IOW(IOCTL_MAGIC, 0x80, u16)
+#define IOCTL_CMD_GPIODIR _IOW(IOCTL_MAGIC, 0x81, u16)
+#define IOCTL_CMD_GPIOSET _IOW(IOCTL_MAGIC, 0x82, u16)
+#define IOCTL_CMD_GPIOGET _IOWR(IOCTL_MAGIC, 0x83, u16)
+#define IOCTL_CMD_GETCHIPTYPE _IOR(IOCTL_MAGIC, 0x84, u16)
 #define IOCTL_CMD_GETUARTINDEX _IOR(IOCTL_MAGIC, 0x85, u16)
-#define IOCTL_CMD_CTRLIN       _IOWR(IOCTL_MAGIC, 0x90, u16)
-#define IOCTL_CMD_CTRLOUT      _IOW(IOCTL_MAGIC, 0x91, u16)
-#define IOCTL_CMD_CMDIN	       _IOWR(IOCTL_MAGIC, 0x92, u16)
-#define IOCTL_CMD_CMDOUT       _IOW(IOCTL_MAGIC, 0x93, u16)
+#define IOCTL_CMD_CTRLIN _IOWR(IOCTL_MAGIC, 0x90, u16)
+#define IOCTL_CMD_CTRLOUT _IOW(IOCTL_MAGIC, 0x91, u16)
+#define IOCTL_CMD_CMDIN _IOWR(IOCTL_MAGIC, 0x92, u16)
+#define IOCTL_CMD_CMDOUT _IOW(IOCTL_MAGIC, 0x93, u16)
 
 static struct usb_driver ch9344_driver;
 static struct tty_driver *ch9344_tty_driver;
@@ -93,22 +95,25 @@ static struct ch9344 *ch9344_table[CH9344_TTY_MINORS];
 #endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0))
-static void ch9344_tty_set_termios(struct tty_struct *tty, const struct ktermios *termios_old);
+static void ch9344_tty_set_termios(struct tty_struct *tty,
+				   const struct ktermios *termios_old);
 #else
-static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *termios_old);
+static void ch9344_tty_set_termios(struct tty_struct *tty,
+				   struct ktermios *termios_old);
 #endif
 
 static int ch9344_get_portnum(int index);
 
-static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum, u8 index, u8 mode);
+static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum,
+			       u8 index, u8 mode);
 
 static int ch9344_cmd_out(struct ch9344 *ch9344, u8 *buf, int count);
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0))
 
 /*
- * Look up an CH9344 structure by minor. If found and not disconnected, increment
- * its refcount and return it with its mutex held.
+ * Look up an CH9344 structure by minor. If found and not disconnected,
+ * increment its refcount and return it with its mutex held.
  */
 static struct ch9344 *ch9344_get_by_index(unsigned int index)
 {
@@ -122,7 +127,9 @@ static struct ch9344 *ch9344_get_by_index(unsigned int index)
 			mutex_unlock(&ch9344->mutex);
 			ch9344 = NULL;
 		} else {
-			tty_port_get(&ch9344->ttyport[ch9344_get_portnum(index)].port);
+			tty_port_get(
+				&ch9344->ttyport[ch9344_get_portnum(index)]
+					 .port);
 			mutex_unlock(&ch9344->mutex);
 		}
 	}
@@ -132,14 +139,16 @@ static struct ch9344 *ch9344_get_by_index(unsigned int index)
 }
 
 /*
- * Try to find an available minor number and if found, associate it with 'ch9344'.
+ * Try to find an available minor number and if found,
+ * associate it with 'ch9344'.
  */
 static int ch9344_alloc_minor(struct ch9344 *ch9344)
 {
 	int minor;
 
 	mutex_lock(&ch9344_minors_lock);
-	minor = idr_alloc(&ch9344_minors, ch9344, 0, CH9344_TTY_MINORS, GFP_KERNEL);
+	minor = idr_alloc(&ch9344_minors, ch9344, 0, CH9344_TTY_MINORS,
+			  GFP_KERNEL);
 	mutex_unlock(&ch9344_minors_lock);
 
 	return minor;
@@ -156,8 +165,8 @@ static void ch9344_release_minor(struct ch9344 *ch9344)
 #else
 
 /*
- * Look up an CH9344 structure by index. If found and not disconnected, increment
- * its refcount and return it with its mutex held.
+ * Look up an CH9344 structure by index. If found and not disconnected,
+ * increment its refcount and return it with its mutex held.
  */
 static struct ch9344 *ch9344_get_by_index(unsigned int index)
 {
@@ -171,7 +180,9 @@ static struct ch9344 *ch9344_get_by_index(unsigned int index)
 			mutex_unlock(&ch9344->mutex);
 			ch9344 = NULL;
 		} else {
-			tty_port_get(&ch9344->ttyport[ch9344_get_portnum(index)].port);
+			tty_port_get(
+				&ch9344->ttyport[ch9344_get_portnum(index)]
+					 .port);
 			mutex_unlock(&ch9344->mutex);
 		}
 	}
@@ -181,7 +192,8 @@ static struct ch9344 *ch9344_get_by_index(unsigned int index)
 }
 
 /*
- * Try to find an available minor number and if found, associate it with 'ch9344'.
+ * Try to find an available minor number and if found,
+ * associate it with 'ch9344'.
  */
 static int ch9344_alloc_minor(struct ch9344 *ch9344)
 {
@@ -217,8 +229,9 @@ static int ch9344_get_portnum(int index)
 /*
  * Functions for control messages.
  */
-static int ch9344_control_out(struct ch9344 *ch9344, u8 request, u8 requesttype, u16 value, u16 index, void *buf,
-			      unsigned bufsize)
+static int ch9344_control_out(struct ch9344 *ch9344, u8 request,
+			      u8 requesttype, u16 value, u16 index,
+			      void *buf, unsigned int bufsize)
 {
 	int retval;
 	char *buffer;
@@ -234,8 +247,10 @@ static int ch9344_control_out(struct ch9344 *ch9344, u8 request, u8 requesttype,
 	retval = usb_autopm_get_interface(ch9344->data);
 	if (retval)
 		goto out;
-	retval = usb_control_msg(ch9344->dev, usb_sndctrlpipe(ch9344->dev, 0), request, requesttype, value, index,
-				 buffer, bufsize, DEFAULT_TIMEOUT);
+	retval = usb_control_msg(ch9344->dev,
+				 usb_sndctrlpipe(ch9344->dev, 0), request,
+				 requesttype, value, index, buffer,
+				 bufsize, DEFAULT_TIMEOUT);
 	usb_autopm_put_interface(ch9344->data);
 
 out:
@@ -243,8 +258,9 @@ out:
 	return retval;
 }
 
-static int ch9344_control_in(struct ch9344 *ch9344, u8 request, u8 requesttype, u16 value, u16 index, char *buf,
-			     unsigned bufsize)
+static int ch9344_control_in(struct ch9344 *ch9344, u8 request,
+			     u8 requesttype, u16 value, u16 index,
+			     char *buf, unsigned int bufsize)
 {
 	int retval = 0;
 	char *buffer;
@@ -256,8 +272,10 @@ static int ch9344_control_in(struct ch9344 *ch9344, u8 request, u8 requesttype, 
 	retval = usb_autopm_get_interface(ch9344->data);
 	if (retval)
 		goto out;
-	retval = usb_control_msg(ch9344->dev, usb_rcvctrlpipe(ch9344->dev, 0), request, requesttype, value, index, buf,
-				 bufsize, DEFAULT_TIMEOUT);
+	retval = usb_control_msg(ch9344->dev,
+				 usb_rcvctrlpipe(ch9344->dev, 0), request,
+				 requesttype, value, index, buf, bufsize,
+				 DEFAULT_TIMEOUT);
 
 	usb_autopm_put_interface(ch9344->data);
 
@@ -269,7 +287,8 @@ out:
 /*
  * Functions for CH9344 cmd messages.
  */
-static int ch9344_cmd_in(struct ch9344 *ch9344, void *sbuf, int count, void *rbuf)
+static int ch9344_cmd_in(struct ch9344 *ch9344, void *sbuf, int count,
+			 void *rbuf)
 {
 	u8 *buffer;
 	int ret;
@@ -286,7 +305,9 @@ static int ch9344_cmd_in(struct ch9344 *ch9344, void *sbuf, int count, void *rbu
 	if (ret < 0)
 		goto out;
 
-	ret = wait_event_interruptible_timeout(ch9344->wcfgioctl, ch9344->cfg_recv, msecs_to_jiffies(DEFAULT_TIMEOUT));
+	ret = wait_event_interruptible_timeout(
+		ch9344->wcfgioctl, ch9344->cfg_recv,
+		msecs_to_jiffies(DEFAULT_TIMEOUT));
 	if (ret == 0) {
 		ret = -ETIMEDOUT;
 		goto out;
@@ -319,15 +340,18 @@ static int ch9344_cmd_out(struct ch9344 *ch9344, u8 *buf, int count)
 	if (retval)
 		goto out;
 
-	retval = usb_bulk_msg(ch9344->dev, ch9344->cmdtx_endpoint, buf, count, &actual_len, DEFAULT_TIMEOUT);
+	retval = usb_bulk_msg(ch9344->dev, ch9344->cmdtx_endpoint, buf,
+			      count, &actual_len, DEFAULT_TIMEOUT);
 	usb_autopm_put_interface(ch9344->data);
 	if (retval) {
-		dev_err(&ch9344->data->dev, "usb_bulk_msg(send) failed, err %i\n", retval);
+		dev_err(&ch9344->data->dev,
+			"usb_bulk_msg(send) failed, err %i\n", retval);
 		goto out;
 	}
 
 	if (actual_len != count) {
-		dev_err(&ch9344->data->dev, "only wrote %d of %d bytes\n", actual_len, count);
+		dev_err(&ch9344->data->dev, "only wrote %d of %d bytes\n",
+			actual_len, count);
 		retval = -EPIPE;
 		goto out;
 	}
@@ -336,16 +360,19 @@ out:
 	return retval;
 }
 
-static inline int ch9344_set_control(struct ch9344 *ch9344, int portnum, int control)
+static inline int ch9344_set_control(struct ch9344 *ch9344, int portnum,
+				     int control)
 {
 	char *buffer;
 	int retval;
-	const unsigned size = 3;
+	const unsigned int size = 3;
 	u8 rgadd = 0;
 
-	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q)
+	if (ch9344->chiptype == CHIP_CH9344L ||
+	    ch9344->chiptype == CHIP_CH9344Q)
 		rgadd = 0x10 * portnum + 0x08;
-	else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
+	else if (ch9344->chiptype == CHIP_CH348L ||
+		 ch9344->chiptype == CHIP_CH348Q) {
 		if (portnum < 4)
 			rgadd = 0x10 * portnum;
 		else
@@ -374,14 +401,16 @@ static inline int ch9344_enum_chiptype(struct ch9344 *ch9344)
 {
 	unsigned char *buffer;
 	int retval;
-	const unsigned size = 4;
+	const unsigned int size = 4;
 
 	buffer = kzalloc(size, GFP_KERNEL);
 	if (!buffer)
 		return -ENOMEM;
 
-	retval = ch9344_control_in(ch9344, CMD_VER, USB_TYPE_VENDOR | USB_RECIP_DEVICE | USB_DIR_IN, 0x00, 0x00, buffer,
-				   size);
+	retval = ch9344_control_in(ch9344, CMD_VER,
+				   USB_TYPE_VENDOR | USB_RECIP_DEVICE |
+					   USB_DIR_IN,
+				   0x00, 0x00, buffer, size);
 	if (retval < 0)
 		goto out;
 
@@ -417,9 +446,11 @@ static int ch9344_configure(struct ch9344 *ch9344, int portnum)
 		return -ENOMEM;
 
 	request = CMD_W_R;
-	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q)
+	if (ch9344->chiptype == CHIP_CH9344L ||
+	    ch9344->chiptype == CHIP_CH9344Q)
 		rgadd = 0x10 * portnum + 0x08;
-	else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
+	else if (ch9344->chiptype == CHIP_CH348L ||
+		 ch9344->chiptype == CHIP_CH348Q) {
 		if (portnum < 4)
 			rgadd = 0x10 * portnum;
 		else
@@ -433,7 +464,8 @@ static int ch9344_configure(struct ch9344 *ch9344, int portnum)
 	if (ret < 0)
 		goto out;
 
-	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
+	if (ch9344->chiptype == CHIP_CH9344L ||
+	    ch9344->chiptype == CHIP_CH9344Q) {
 		buffer[1] = rgadd + R_C3;
 		buffer[2] = 0x03;
 		ret = ch9344_cmd_out(ch9344, buffer, 0x03);
@@ -517,7 +549,9 @@ static int ch9344_start_wb(struct ch9344 *ch9344, struct ch9344_wb *wb)
 
 	rc = usb_submit_urb(wb->urb, GFP_ATOMIC);
 	if (rc < 0) {
-		dev_err(&ch9344->data->dev, "%s - usb_submit_urb(write) failed: %d\n", __func__, rc);
+		dev_err(&ch9344->data->dev,
+			"%s - usb_submit_urb(write) failed: %d\n",
+			__func__, rc);
 		ch9344_write_done(ch9344, wb);
 	}
 	return rc;
@@ -547,10 +581,12 @@ static void ch9344_cmd_irq(struct urb *urb)
 	struct tty_struct *tty;
 #endif
 
-	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
+	if (ch9344->chiptype == CHIP_CH9344L ||
+	    ch9344->chiptype == CHIP_CH9344Q) {
 		left = 4;
 		right = 8;
-	} else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
+	} else if (ch9344->chiptype == CHIP_CH348L ||
+		   ch9344->chiptype == CHIP_CH348Q) {
 		left = 0;
 		right = 8;
 	}
@@ -562,13 +598,15 @@ static void ch9344_cmd_irq(struct urb *urb)
 			reg_iir = *(data + i + 1);
 			portnum = *(data + i) & 0x0f;
 
-			if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q)
+			if (ch9344->chiptype == CHIP_CH9344L ||
+			    ch9344->chiptype == CHIP_CH9344Q)
 				rgadd = 0x10 * portnum + 0x08;
 			else {
 				if (portnum < 4)
 					rgadd = 0x10 * portnum;
 				else
-					rgadd = 0x10 * (portnum - 4) + 0x08;
+					rgadd = 0x10 * (portnum - 4) +
+						0x08;
 			}
 
 			if (reg_iir == R_INIT) {
@@ -576,151 +614,227 @@ static void ch9344_cmd_irq(struct urb *urb)
 				continue;
 			}
 			if (reg_iir >= R_MOD && reg_iir <= R_TM_O) {
-				if ((portnum >= left) && (portnum < right)) {
+				if ((portnum >= left) &&
+				    (portnum < right)) {
 					portnum -= ch9344->port_offset;
 					if (reg_iir == R_IO_I) {
-						spin_lock_irqsave(&ch9344->write_lock, flags);
+						spin_lock_irqsave(
+							&ch9344->write_lock,
+							flags);
 						ch9344->gpio_recv = true;
-						ch9344->gpiovalin = (*(data + i + 3) << 8) + *(data + i + 2);
-						wake_up_interruptible(&ch9344->wgpioioctl);
-						spin_unlock_irqrestore(&ch9344->write_lock, flags);
+						ch9344->gpiovalin =
+							(*(data + i + 3)
+							 << 8) +
+							*(data + i + 2);
+						wake_up_interruptible(
+							&ch9344->wgpioioctl);
+						spin_unlock_irqrestore(
+							&ch9344->write_lock,
+							flags);
 					}
 				} else
 					break;
 				i += 4;
 				continue;
-			} else if (reg_iir >= R_IO_CE && reg_iir <= R_IO_CI) {
+			} else if (reg_iir >= R_IO_CE &&
+				   reg_iir <= R_IO_CI) {
 				if (reg_iir == R_IO_CI) {
-					spin_lock_irqsave(&ch9344->write_lock, flags);
+					spin_lock_irqsave(
+						&ch9344->write_lock,
+						flags);
 					ch9344->gpio_recv = true;
-					memcpy(&gpiovalins, data + 2, 0x08);
-					ch9344->gpiovalins = le64_to_cpu(gpiovalins);
-					wake_up_interruptible(&ch9344->wgpioioctl);
-					spin_unlock_irqrestore(&ch9344->write_lock, flags);
+					memcpy(&gpiovalins, data + 2,
+					       0x08);
+					ch9344->gpiovalins =
+						le64_to_cpu(gpiovalins);
+					wake_up_interruptible(
+						&ch9344->wgpioioctl);
+					spin_unlock_irqrestore(
+						&ch9344->write_lock,
+						flags);
 					i += 10;
 				} else
 					i += 3;
 				continue;
 			} else if ((reg_iir & 0x0f) == R_II_B2) {
-				if ((portnum >= left) && (portnum < right)) {
+				if ((portnum >= left) &&
+				    (portnum < right)) {
 					portnum -= ch9344->port_offset;
-					spin_lock_irqsave(&ch9344->write_lock, flags);
-					ch9344->ttyport[portnum].write_empty = true;
-					wake_up_interruptible(&ch9344->ttyport[portnum].wioctl);
-					spin_unlock_irqrestore(&ch9344->write_lock, flags);
+					spin_lock_irqsave(
+						&ch9344->write_lock,
+						flags);
+					ch9344->ttyport[portnum]
+						.write_empty = true;
+					wake_up_interruptible(
+						&ch9344->ttyport[portnum]
+							 .wioctl);
+					spin_unlock_irqrestore(
+						&ch9344->write_lock,
+						flags);
 				} else
 					break;
 			} else if (((reg_iir & 0x0f) == R_II_B3) ||
-				   ((reg_iir == VEN_R) && (*(data + i + 2) == (rgadd | 0x06)))) {
-				if ((portnum >= left) && (portnum < right)) {
+				   ((reg_iir == VEN_R) &&
+				    (*(data + i + 2) == (rgadd | 0x06)))) {
+				if ((portnum >= left) &&
+				    (portnum < right)) {
 					portnum -= ch9344->port_offset;
 
 					spin_lock(&ch9344->read_lock);
-					newctrl = ch9344->ttyport[portnum].ctrlin;
+					newctrl = ch9344->ttyport[portnum]
+							  .ctrlin;
 					/* modem signal */
 					if ((reg_iir & 0x0f) == R_II_B3)
 						ctrlval = *(data + i + 2);
 					else
-						ctrlval = *(data + i + 3) | 0x0f;
+						ctrlval = *(data + i + 3) |
+							  0x0f;
 					if (ctrlval & CH9344_CTI_C) {
-						if (ctrlval & (CH9344_CTI_C << 4)) {
-							newctrl |= CH9344_CTI_C;
-						} else {
-							newctrl &= ~CH9344_CTI_C;
-						}
+						if (ctrlval &
+						    (CH9344_CTI_C << 4))
+							newctrl |=
+								CH9344_CTI_C;
+						else
+							newctrl &=
+								~CH9344_CTI_C;
 					}
 					if (ctrlval & CH9344_CTI_DS) {
-						if (ctrlval & (CH9344_CTI_DS << 4)) {
-							newctrl |= CH9344_CTI_DS;
-						} else {
-							newctrl &= ~CH9344_CTI_DS;
-						}
+						if (ctrlval &
+						    (CH9344_CTI_DS << 4))
+							newctrl |=
+								CH9344_CTI_DS;
+						else
+							newctrl &=
+								~CH9344_CTI_DS;
 					}
 					if (ctrlval & CH9344_CTI_R) {
-						if (ctrlval & (CH9344_CTI_R << 4)) {
-							newctrl |= CH9344_CTI_R;
-						} else {
-							newctrl &= ~CH9344_CTI_R;
-						}
+						if (ctrlval &
+						    (CH9344_CTI_R << 4))
+							newctrl |=
+								CH9344_CTI_R;
+						else
+							newctrl &=
+								~CH9344_CTI_R;
 					}
 					if (ctrlval & CH9344_CTI_DC) {
-						if (ctrlval & (CH9344_CTI_DC << 4)) {
-							newctrl |= CH9344_CTI_DC;
-						} else {
-							newctrl &= ~CH9344_CTI_DC;
-						}
+						if (ctrlval &
+						    (CH9344_CTI_DC << 4))
+							newctrl |=
+								CH9344_CTI_DC;
+						else
+							newctrl &=
+								~CH9344_CTI_DC;
 					}
 
-					if (!ch9344->ttyport[portnum].clocal &&
-					    (ch9344->ttyport[portnum].ctrlin & ~newctrl & CH9344_CTI_DC)) {
-						spin_unlock(&ch9344->read_lock);
+					if (!ch9344->ttyport[portnum]
+						     .clocal &&
+					    (ch9344->ttyport[portnum]
+						     .ctrlin &
+					     ~newctrl & CH9344_CTI_DC)) {
+						spin_unlock(
+							&ch9344->read_lock);
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 10, 0))
-						tty = tty_port_tty_get(&ch9344->ttyport[portnum].port);
+						tty = tty_port_tty_get(
+							&ch9344->ttyport[portnum]
+								 .port);
 						tty_hangup(tty);
 						tty_kref_put(tty);
 #else
-						tty_port_tty_hangup(&ch9344->ttyport[portnum].port, false);
+						tty_port_tty_hangup(
+							&ch9344->ttyport[portnum]
+								 .port,
+							false);
 #endif
-						spin_lock(&ch9344->read_lock);
+						spin_lock(
+							&ch9344->read_lock);
 					}
 
-					difference = ch9344->ttyport[portnum].ctrlin ^ newctrl;
-					ch9344->ttyport[portnum].ctrlin = newctrl;
-					ch9344->ttyport[portnum].oldcount = ch9344->ttyport[portnum].iocount;
+					difference =
+						ch9344->ttyport[portnum]
+							.ctrlin ^
+						newctrl;
+					ch9344->ttyport[portnum].ctrlin =
+						newctrl;
+					ch9344->ttyport[portnum].oldcount =
+						ch9344->ttyport[portnum]
+							.iocount;
 
 					if (difference & CH9344_CTI_C)
-						ch9344->ttyport[portnum].iocount.cts++;
+						ch9344->ttyport[portnum]
+							.iocount.cts++;
 					if (difference & CH9344_CTI_DS)
-						ch9344->ttyport[portnum].iocount.dsr++;
+						ch9344->ttyport[portnum]
+							.iocount.dsr++;
 					if (difference & CH9344_CTI_R)
-						ch9344->ttyport[portnum].iocount.rng++;
+						ch9344->ttyport[portnum]
+							.iocount.rng++;
 					if (difference & CH9344_CTI_DC)
-						ch9344->ttyport[portnum].iocount.dcd++;
+						ch9344->ttyport[portnum]
+							.iocount.dcd++;
 					spin_unlock(&ch9344->read_lock);
 
 					if (difference)
-						wake_up_interruptible(&ch9344->ttyport[portnum].wmodemioctl);
+						wake_up_interruptible(
+							&ch9344->ttyport[portnum]
+								 .wmodemioctl);
 				} else
 					break;
 			} else if ((reg_iir & 0x0f) == R_II_B1) {
-				if ((portnum >= left) && (portnum < right)) {
+				if ((portnum >= left) &&
+				    (portnum < right)) {
 					portnum -= ch9344->port_offset;
 
 					spin_lock(&ch9344->read_lock);
 					/* lsr signal */
 					ctrlval = *(data + i + 2);
-					ch9344->ttyport[portnum].oldcount = ch9344->ttyport[portnum].iocount;
+					ch9344->ttyport[portnum].oldcount =
+						ch9344->ttyport[portnum]
+							.iocount;
 					if (ctrlval & (CH9344_LO >> 3)) {
-						ch9344->ttyport[portnum].iocount.overrun++;
+						ch9344->ttyport[portnum]
+							.iocount.overrun++;
 					}
 					if (ctrlval & (CH9344_LP >> 3)) {
-						ch9344->ttyport[portnum].iocount.parity++;
+						ch9344->ttyport[portnum]
+							.iocount.parity++;
 					}
 					if (ctrlval & (CH9344_LF >> 3)) {
-						ch9344->ttyport[portnum].iocount.frame++;
+						ch9344->ttyport[portnum]
+							.iocount.frame++;
 					}
 					if (ctrlval & (CH9344_LB >> 3)) {
-						ch9344->ttyport[portnum].iocount.brk++;
+						ch9344->ttyport[portnum]
+							.iocount.brk++;
 					}
 					spin_unlock(&ch9344->read_lock);
 				} else
 					break;
 			} else if (reg_iir == R_EE_CFG) {
 				if (*(data + i) == CMD_W_R) {
-					spin_lock_irqsave(&ch9344->write_lock, flags);
-					if (ch9344->cfgindex + 0x04 > CFGLEN)
+					spin_lock_irqsave(
+						&ch9344->write_lock,
+						flags);
+					if (ch9344->cfgindex + 0x04 >
+					    CFGLEN)
 						ch9344->cfgindex = 0;
-					memcpy(ch9344->cfgval + ch9344->cfgindex, data + i, 0x04);
+					memcpy(ch9344->cfgval +
+						       ch9344->cfgindex,
+					       data + i, 0x04);
 					ch9344->cfgindex += 0x04;
 					ch9344->cfg_recv = true;
-					wake_up_interruptible(&ch9344->wcfgioctl);
-					spin_unlock_irqrestore(&ch9344->write_lock, flags);
+					wake_up_interruptible(
+						&ch9344->wcfgioctl);
+					spin_unlock_irqrestore(
+						&ch9344->write_lock,
+						flags);
 				} else
 					break;
 				i += 4;
 				continue;
 			} else {
-				dev_dbg(&ch9344->data->dev, "%s - wrong status received", __func__);
+				dev_dbg(&ch9344->data->dev,
+					"%s - wrong status received",
+					__func__);
 			}
 			i += 3;
 		}
@@ -729,10 +843,14 @@ static void ch9344_cmd_irq(struct urb *urb)
 	case -ENOENT:
 	case -ESHUTDOWN:
 		/* this urb is terminated, clean up */
-		dev_dbg(&ch9344->data->dev, "%s - urb shutting down with status: %d\n", __func__, status);
+		dev_dbg(&ch9344->data->dev,
+			"%s - urb shutting down with status: %d\n",
+			__func__, status);
 		return;
 	default:
-		dev_dbg(&ch9344->data->dev, "%s - nonzero urb status received: %d\n", __func__, status);
+		dev_dbg(&ch9344->data->dev,
+			"%s - nonzero urb status received: %d\n", __func__,
+			status);
 		return;
 	}
 
@@ -740,10 +858,13 @@ static void ch9344_cmd_irq(struct urb *urb)
 
 	retval = usb_submit_urb(urb, GFP_ATOMIC);
 	if (retval && retval != -EPERM)
-		dev_err(&ch9344->data->dev, "%s - usb_submit_urb failed: %d\n", __func__, retval);
+		dev_err(&ch9344->data->dev,
+			"%s - usb_submit_urb failed: %d\n", __func__,
+			retval);
 }
 
-static int ch9344_submit_read_urb(struct ch9344 *ch9344, int index, gfp_t mem_flags)
+static int ch9344_submit_read_urb(struct ch9344 *ch9344, int index,
+				  gfp_t mem_flags)
 {
 	int res;
 
@@ -753,7 +874,9 @@ static int ch9344_submit_read_urb(struct ch9344 *ch9344, int index, gfp_t mem_fl
 	res = usb_submit_urb(ch9344->read_urbs[index], mem_flags);
 	if (res) {
 		if (res != -EPERM) {
-			dev_err(&ch9344->data->dev, "%s - usb_submit_urb failed: %d\n", __func__, res);
+			dev_err(&ch9344->data->dev,
+				"%s - usb_submit_urb failed: %d\n",
+				__func__, res);
 		}
 		set_bit(index, &ch9344->read_urbs_free);
 		return res;
@@ -788,10 +911,12 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 	struct tty_struct *tty;
 #endif
 
-	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
+	if (ch9344->chiptype == CHIP_CH9344L ||
+	    ch9344->chiptype == CHIP_CH9344Q) {
 		left = 4;
 		right = 8;
-	} else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
+	} else if (ch9344->chiptype == CHIP_CH348L ||
+		   ch9344->chiptype == CHIP_CH348Q) {
 		left = 0;
 		right = 8;
 	}
@@ -816,15 +941,20 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 		if (ch9344->ttyport[portnum].isopen) {
 			ch9344->ttyport[portnum].iocount.rx += usblen;
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0))
-			tty = tty_port_tty_get(&ch9344->ttyport[portnum].port);
+			tty = tty_port_tty_get(
+				&ch9344->ttyport[portnum].port);
 			if (tty) {
-				tty_insert_flip_string(tty, buffer + i + 2, usblen);
+				tty_insert_flip_string(tty, buffer + i + 2,
+						       usblen);
 				tty_flip_buffer_push(tty);
 				tty_kref_put(tty);
 			}
 #else
-			tty_insert_flip_string(&ch9344->ttyport[portnum].port, buffer + i + 2, usblen);
-			tty_flip_buffer_push(&ch9344->ttyport[portnum].port);
+			tty_insert_flip_string(
+				&ch9344->ttyport[portnum].port,
+				buffer + i + 2, usblen);
+			tty_flip_buffer_push(
+				&ch9344->ttyport[portnum].port);
 #endif
 		}
 	}
@@ -843,7 +973,9 @@ static void ch9344_read_bulk_callback(struct urb *urb)
 
 	if (status) {
 		set_bit(rb->index, &ch9344->read_urbs_free);
-		dev_dbg(&ch9344->data->dev, "%s - non-zero urb status: %d\n", __func__, status);
+		dev_dbg(&ch9344->data->dev,
+			"%s - non-zero urb status: %d\n", __func__,
+			status);
 		return;
 	}
 
@@ -869,7 +1001,8 @@ static void ch9344_write_bulk(struct urb *urb)
 
 static void ch9344_softint(struct work_struct *work)
 {
-	struct ch9344_ttyport *ttyport = container_of(work, struct ch9344_ttyport, work);
+	struct ch9344_ttyport *ttyport =
+		container_of(work, struct ch9344_ttyport, work);
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 10, 0))
 	struct tty_struct *tty;
 
@@ -886,7 +1019,8 @@ static void ch9344_softint(struct work_struct *work)
 /*
  * TTY handlers
  */
-static int ch9344_tty_install(struct tty_driver *driver, struct tty_struct *tty)
+static int ch9344_tty_install(struct tty_driver *driver,
+			      struct tty_struct *tty)
 {
 	struct ch9344 *ch9344;
 	int retval;
@@ -917,7 +1051,8 @@ static int ch9344_tty_install(struct tty_driver *driver, struct tty_struct *tty)
 	return 0;
 
 error_init_termios:
-	tty_port_put(&ch9344->ttyport[ch9344_get_portnum(tty->index)].port);
+	tty_port_put(
+		&ch9344->ttyport[ch9344_get_portnum(tty->index)].port);
 	return retval;
 }
 
@@ -926,15 +1061,19 @@ static int ch9344_tty_open(struct tty_struct *tty, struct file *filp)
 	struct ch9344 *ch9344 = tty->driver_data;
 	int rv;
 
-	rv = tty_port_open(&ch9344->ttyport[ch9344_get_portnum(tty->index)].port, tty, filp);
+	rv = tty_port_open(
+		&ch9344->ttyport[ch9344_get_portnum(tty->index)].port, tty,
+		filp);
 	if (!rv) {
-		ch9344->ttyport[ch9344_get_portnum(tty->index)].write_empty = true;
+		ch9344->ttyport[ch9344_get_portnum(tty->index)]
+			.write_empty = true;
 	}
 
 	return rv;
 }
 
-static inline void tty_set_portdata(struct ch9344_ttyport *port, void *data)
+static inline void tty_set_portdata(struct ch9344_ttyport *port,
+				    void *data)
 {
 	port->portdata = data;
 }
@@ -950,7 +1089,8 @@ static void ch9344_port_dtr_rts(struct tty_port *port, bool raise)
 static void ch9344_port_dtr_rts(struct tty_port *port, int raise)
 #endif
 {
-	struct ch9344_ttyport *ttyport = container_of(port, struct ch9344_ttyport, port);
+	struct ch9344_ttyport *ttyport =
+		container_of(port, struct ch9344_ttyport, port);
 	struct ch9344 *ch9344 = tty_get_portdata(ttyport);
 	int portnum = ttyport->portnum;
 	int val;
@@ -969,9 +1109,11 @@ static void ch9344_port_dtr_rts(struct tty_port *port, int raise)
 	ch9344_set_control(ch9344, portnum, 0x11);
 }
 
-static int ch9344_port_activate(struct tty_port *port, struct tty_struct *tty)
+static int ch9344_port_activate(struct tty_port *port,
+				struct tty_struct *tty)
 {
-	struct ch9344_ttyport *ttyport = container_of(port, struct ch9344_ttyport, port);
+	struct ch9344_ttyport *ttyport =
+		container_of(port, struct ch9344_ttyport, port);
 	struct ch9344 *ch9344 = tty_get_portdata(ttyport);
 	int portnum = ttyport->portnum;
 	int retval = -ENODEV;
@@ -1013,7 +1155,8 @@ disconnected:
 
 static void ch9344_port_destruct(struct tty_port *port)
 {
-	struct ch9344_ttyport *ttyport = container_of(port, struct ch9344_ttyport, port);
+	struct ch9344_ttyport *ttyport =
+		container_of(port, struct ch9344_ttyport, port);
 	struct ch9344 *ch9344 = tty_get_portdata(ttyport);
 
 	if (ch9344->opencounts-- == 1) {
@@ -1025,7 +1168,8 @@ static void ch9344_port_destruct(struct tty_port *port)
 
 static void ch9344_port_shutdown(struct tty_port *port)
 {
-	struct ch9344_ttyport *ttyport = container_of(port, struct ch9344_ttyport, port);
+	struct ch9344_ttyport *ttyport =
+		container_of(port, struct ch9344_ttyport, port);
 	struct ch9344 *ch9344 = tty_get_portdata(ttyport);
 	int portnum = ttyport->portnum;
 
@@ -1038,13 +1182,15 @@ static void ch9344_tty_cleanup(struct tty_struct *tty)
 {
 	struct ch9344 *ch9344 = tty->driver_data;
 
-	tty_port_put(&ch9344->ttyport[ch9344_get_portnum(tty->index)].port);
+	tty_port_put(
+		&ch9344->ttyport[ch9344_get_portnum(tty->index)].port);
 }
 
 static void ch9344_tty_hangup(struct tty_struct *tty)
 {
 	struct ch9344 *ch9344 = tty->driver_data;
-	tty_port_hangup(&ch9344->ttyport[ch9344_get_portnum(tty->index)].port);
+	tty_port_hangup(
+		&ch9344->ttyport[ch9344_get_portnum(tty->index)].port);
 }
 
 static void ch9344_tty_close(struct tty_struct *tty, struct file *filp)
@@ -1054,7 +1200,8 @@ static void ch9344_tty_close(struct tty_struct *tty, struct file *filp)
 	int ret;
 
 	tty_port_close(&ch9344->ttyport[portnum].port, tty, filp);
-	if (!ch9344->disconnected && (ch9344->ttyport[portnum].uartmode == M_HF)) {
+	if (!ch9344->disconnected &&
+	    (ch9344->ttyport[portnum].uartmode == M_HF)) {
 		ret = ch9344_set_uartmode(ch9344, portnum, portnum, M_NOR);
 		if (!ret) {
 			ch9344->ttyport[portnum].uartmode = M_NOR;
@@ -1063,9 +1210,11 @@ static void ch9344_tty_close(struct tty_struct *tty, struct file *filp)
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0))
-static ssize_t ch9344_tty_write(struct tty_struct *tty, const u8 *buf, size_t count)
+static ssize_t ch9344_tty_write(struct tty_struct *tty, const u8 *buf,
+				size_t count)
 #else
-static int ch9344_tty_write(struct tty_struct *tty, const unsigned char *buf, int count)
+static int ch9344_tty_write(struct tty_struct *tty,
+			    const unsigned char *buf, int count)
 #endif
 {
 	struct ch9344 *ch9344 = tty->driver_data;
@@ -1087,7 +1236,9 @@ static int ch9344_tty_write(struct tty_struct *tty, const unsigned char *buf, in
 	else
 		maxpacknum = ch9344->writesize / (maxep - 3);
 
-	count = count > (ch9344->writesize - maxpacknum * 3) ? (ch9344->writesize - maxpacknum * 3) : count;
+	count = count > (ch9344->writesize - maxpacknum * 3) ?
+			(ch9344->writesize - maxpacknum * 3) :
+			count;
 	total_len = count;
 	sendlen = 0;
 
@@ -1136,7 +1287,8 @@ transmit:
 
 	if (ch9344->susp_count) {
 		if (ch9344->putbuffer) {
-			usb_anchor_urb(ch9344->putbuffer->urb, &ch9344->delayed);
+			usb_anchor_urb(ch9344->putbuffer->urb,
+				       &ch9344->delayed);
 			ch9344->putbuffer = NULL;
 		}
 		usb_anchor_urb(wb->urb, &ch9344->delayed);
@@ -1151,9 +1303,10 @@ transmit:
 
 	if (!ch9344->ttyport[portnum].write_empty) {
 		spin_unlock_irqrestore(&ch9344->write_lock, flags);
-		timeout = wait_event_interruptible_timeout(ch9344->ttyport[portnum].wioctl,
-							   ch9344->ttyport[portnum].write_empty,
-							   msecs_to_jiffies(DEFAULT_TIMEOUT));
+		timeout = wait_event_interruptible_timeout(
+			ch9344->ttyport[portnum].wioctl,
+			ch9344->ttyport[portnum].write_empty,
+			msecs_to_jiffies(DEFAULT_TIMEOUT));
 		if (timeout <= 0) {
 			wb->use = 0;
 			ch9344->ttyport[portnum].write_empty = true;
@@ -1214,7 +1367,8 @@ static int ch9344_tty_chars_in_buffer(struct tty_struct *tty)
 	/*
      * This is inaccurate (overcounts), but it works.
      */
-	return (CH9344_NW - ch9344_wb_is_avail(ch9344, portnum)) * ch9344->writesize;
+	return (CH9344_NW - ch9344_wb_is_avail(ch9344, portnum)) *
+	       ch9344->writesize;
 }
 
 static int ch9344_tty_break_ctl(struct tty_struct *tty, int state)
@@ -1226,9 +1380,11 @@ static int ch9344_tty_break_ctl(struct tty_struct *tty, int state)
 	const unsigned size = 3;
 	u8 rgadd = 0;
 
-	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q)
+	if (ch9344->chiptype == CHIP_CH9344L ||
+	    ch9344->chiptype == CHIP_CH9344Q)
 		rgadd = 0x10 * portnum + 0x08;
-	else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
+	else if (ch9344->chiptype == CHIP_CH348L ||
+		 ch9344->chiptype == CHIP_CH348Q) {
 		if (portnum < 4)
 			rgadd = 0x10 * portnum;
 		else
@@ -1259,17 +1415,30 @@ static int ch9344_tty_tiocmget(struct tty_struct *tty)
 	int portnum = ch9344_get_portnum(tty->index);
 	unsigned int result;
 
-	result = (ch9344->ttyport[portnum].ctrlout & CH9344_CTO_D ? TIOCM_DTR : 0) |
-		 (ch9344->ttyport[portnum].ctrlout & CH9344_CTO_R ? TIOCM_RTS : 0) |
-		 (ch9344->ttyport[portnum].ctrlin & CH9344_CTI_C ? TIOCM_CTS : 0) |
-		 (ch9344->ttyport[portnum].ctrlin & CH9344_CTI_DS ? TIOCM_DSR : 0) |
-		 (ch9344->ttyport[portnum].ctrlin & CH9344_CTI_R ? TIOCM_RI : 0) |
-		 (ch9344->ttyport[portnum].ctrlin & CH9344_CTI_DC ? TIOCM_CD : 0);
+	result = (ch9344->ttyport[portnum].ctrlout & CH9344_CTO_D ?
+			  TIOCM_DTR :
+			  0) |
+		 (ch9344->ttyport[portnum].ctrlout & CH9344_CTO_R ?
+			  TIOCM_RTS :
+			  0) |
+		 (ch9344->ttyport[portnum].ctrlin & CH9344_CTI_C ?
+			  TIOCM_CTS :
+			  0) |
+		 (ch9344->ttyport[portnum].ctrlin & CH9344_CTI_DS ?
+			  TIOCM_DSR :
+			  0) |
+		 (ch9344->ttyport[portnum].ctrlin & CH9344_CTI_R ?
+			  TIOCM_RI :
+			  0) |
+		 (ch9344->ttyport[portnum].ctrlin & CH9344_CTI_DC ?
+			  TIOCM_CD :
+			  0);
 
 	return result;
 }
 
-static int ch9344_tty_tiocmset(struct tty_struct *tty, unsigned int set, unsigned int clear)
+static int ch9344_tty_tiocmset(struct tty_struct *tty, unsigned int set,
+			       unsigned int clear)
 {
 	struct ch9344 *ch9344 = tty->driver_data;
 	unsigned int newctrl;
@@ -1281,8 +1450,10 @@ static int ch9344_tty_tiocmset(struct tty_struct *tty, unsigned int set, unsigne
 		return -EINVAL;
 
 	newctrl = ch9344->ttyport[portnum].ctrlout;
-	set = (set & TIOCM_DTR ? CH9344_CTO_D : 0) | (set & TIOCM_RTS ? CH9344_CTO_R : 0);
-	clear = (clear & TIOCM_DTR ? CH9344_CTO_D : 0) | (clear & TIOCM_RTS ? CH9344_CTO_R : 0);
+	set = (set & TIOCM_DTR ? CH9344_CTO_D : 0) |
+	      (set & TIOCM_RTS ? CH9344_CTO_R : 0);
+	clear = (clear & TIOCM_DTR ? CH9344_CTO_D : 0) |
+		(clear & TIOCM_RTS ? CH9344_CTO_R : 0);
 
 	newctrl = (newctrl & ~clear) | set;
 
@@ -1306,7 +1477,8 @@ static int ch9344_tty_tiocmset(struct tty_struct *tty, unsigned int set, unsigne
 	return rv;
 }
 
-static int ch9344_get_icount(struct tty_struct *tty, struct serial_icounter_struct *icount)
+static int ch9344_get_icount(struct tty_struct *tty,
+			     struct serial_icounter_struct *icount)
 {
 	struct ch9344 *ch9344 = tty->driver_data;
 	int portnum = ch9344_get_portnum(tty->index);
@@ -1333,7 +1505,8 @@ static int ch9344_get_icount(struct tty_struct *tty, struct serial_icounter_stru
 	return 0;
 }
 
-static int ch348_gpioenable(struct ch9344 *ch9344, u8 gpiogroup, u8 gpioenable)
+static int ch348_gpioenable(struct ch9344 *ch9344, u8 gpiogroup,
+			    u8 gpioenable)
 {
 	u8 *buffer;
 	int ret;
@@ -1363,7 +1536,8 @@ static int ch348_gpioenable(struct ch9344 *ch9344, u8 gpiogroup, u8 gpioenable)
 	return ret < 0 ? ret : 0;
 }
 
-static int ch348_set_gpiodir(struct ch9344 *ch9344, u8 gpionumber, u8 gpiodir)
+static int ch348_set_gpiodir(struct ch9344 *ch9344, u8 gpionumber,
+			     u8 gpiodir)
 {
 	u8 *buffer;
 	int ret;
@@ -1398,7 +1572,8 @@ static int ch348_set_gpiodir(struct ch9344 *ch9344, u8 gpionumber, u8 gpiodir)
 	return ret < 0 ? ret : 0;
 }
 
-static int ch348_set_gpioval(struct ch9344 *ch9344, u8 gpionumber, u8 gpioval)
+static int ch348_set_gpioval(struct ch9344 *ch9344, u8 gpionumber,
+			     u8 gpioval)
 {
 	u8 *buffer;
 	int ret;
@@ -1454,8 +1629,9 @@ static int ch348_get_gpioval(struct ch9344 *ch9344)
 	if (ret < 0)
 		goto out;
 
-	ret = wait_event_interruptible_timeout(ch9344->wgpioioctl, ch9344->gpio_recv,
-					       msecs_to_jiffies(DEFAULT_TIMEOUT));
+	ret = wait_event_interruptible_timeout(
+		ch9344->wgpioioctl, ch9344->gpio_recv,
+		msecs_to_jiffies(DEFAULT_TIMEOUT));
 	if (ret == 0) {
 		return -ETIMEDOUT;
 	}
@@ -1470,7 +1646,8 @@ out:
 	return ret < 0 ? ret : 0;
 }
 
-static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum, u8 index, u8 mode)
+static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum,
+			       u8 index, u8 mode)
 {
 	u8 *buffer;
 	int ret = 0;
@@ -1479,9 +1656,11 @@ static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum, u8 index, u8 
 	u8 mode4 = 0;
 	int i;
 
-	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q)
+	if (ch9344->chiptype == CHIP_CH9344L ||
+	    ch9344->chiptype == CHIP_CH9344Q)
 		rgadd = 0x10 * portnum + 0x08;
-	else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
+	else if (ch9344->chiptype == CHIP_CH348L ||
+		 ch9344->chiptype == CHIP_CH348Q) {
 		if (portnum < 4)
 			rgadd = 0x10 * portnum;
 		else
@@ -1492,7 +1671,8 @@ static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum, u8 index, u8 
 	if (!buffer)
 		return -ENOMEM;
 
-	if ((ch9344->ttyport[portnum].uartmode == M_NOR) && (mode == M_HF)) {
+	if ((ch9344->ttyport[portnum].uartmode == M_NOR) &&
+	    (mode == M_HF)) {
 		buffer[0] = CMD_W_BR;
 		buffer[1] = rgadd + R_C4;
 		buffer[2] = 0x51;
@@ -1501,7 +1681,8 @@ static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum, u8 index, u8 
 			goto out;
 	}
 
-	if ((ch9344->ttyport[portnum].uartmode == M_HF) && (mode == M_NOR)) {
+	if ((ch9344->ttyport[portnum].uartmode == M_HF) &&
+	    (mode == M_NOR)) {
 		buffer[0] = CMD_W_BR;
 		buffer[1] = rgadd + R_C4;
 		buffer[2] = 0x50;
@@ -1510,7 +1691,8 @@ static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum, u8 index, u8 
 			goto out;
 	}
 
-	if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q)
+	if (ch9344->chiptype == CHIP_CH348L ||
+	    ch9344->chiptype == CHIP_CH348Q)
 		goto out;
 
 	for (i = 0; i < ch9344->num_ports; i++) {
@@ -1531,7 +1713,8 @@ out:
 	return ret < 0 ? ret : 0;
 }
 
-static int ch9344_set_gpiodir(struct ch9344 *ch9344, int portnum, u8 gpionumber, u8 gpiodir)
+static int ch9344_set_gpiodir(struct ch9344 *ch9344, int portnum,
+			      u8 gpionumber, u8 gpiodir)
 {
 	u8 *buffer;
 	int ret;
@@ -1561,7 +1744,8 @@ static int ch9344_set_gpiodir(struct ch9344 *ch9344, int portnum, u8 gpionumber,
 	return ret < 0 ? ret : 0;
 }
 
-static int ch9344_set_gpioval(struct ch9344 *ch9344, int portnum, u8 gpionumber, u8 gpioval)
+static int ch9344_set_gpioval(struct ch9344 *ch9344, int portnum,
+			      u8 gpionumber, u8 gpioval)
 {
 	u8 *buffer;
 	int ret;
@@ -1619,8 +1803,9 @@ static int ch9344_get_gpioval(struct ch9344 *ch9344, int portnum)
 	if (ret < 0)
 		goto out;
 
-	ret = wait_event_interruptible_timeout(ch9344->wgpioioctl, ch9344->gpio_recv,
-					       msecs_to_jiffies(DEFAULT_TIMEOUT));
+	ret = wait_event_interruptible_timeout(
+		ch9344->wgpioioctl, ch9344->gpio_recv,
+		msecs_to_jiffies(DEFAULT_TIMEOUT));
 	if (ret == 0) {
 		return -ETIMEDOUT;
 	}
@@ -1635,7 +1820,8 @@ out:
 	return ret < 0 ? ret : 0;
 }
 
-static int ch9344_get_serial_info(struct ch9344 *ch9344, int portnum, struct serial_struct __user *info)
+static int ch9344_get_serial_info(struct ch9344 *ch9344, int portnum,
+				  struct serial_struct __user *info)
 {
 	struct serial_struct tmp;
 
@@ -1645,11 +1831,14 @@ static int ch9344_get_serial_info(struct ch9344 *ch9344, int portnum, struct ser
 	memset(&tmp, 0, sizeof(tmp));
 	tmp.flags = ASYNC_LOW_LATENCY;
 	tmp.xmit_fifo_size = ch9344->writesize;
-	tmp.baud_base = le32_to_cpu(ch9344->ttyport[portnum].line.dwDTERate);
+	tmp.baud_base =
+		le32_to_cpu(ch9344->ttyport[portnum].line.dwDTERate);
 	tmp.close_delay = ch9344->ttyport[portnum].port.close_delay / 10;
-	tmp.closing_wait = ch9344->ttyport[portnum].port.closing_wait == ASYNC_CLOSING_WAIT_NONE ?
-				   ASYNC_CLOSING_WAIT_NONE :
-				   ch9344->ttyport[portnum].port.closing_wait / 10;
+	tmp.closing_wait =
+		ch9344->ttyport[portnum].port.closing_wait ==
+				ASYNC_CLOSING_WAIT_NONE ?
+			ASYNC_CLOSING_WAIT_NONE :
+			ch9344->ttyport[portnum].port.closing_wait / 10;
 
 	if (copy_to_user(info, &tmp, sizeof(tmp)))
 		return -EFAULT;
@@ -1657,7 +1846,8 @@ static int ch9344_get_serial_info(struct ch9344 *ch9344, int portnum, struct ser
 		return 0;
 }
 
-static int ch9344_set_serial_info(struct ch9344 *ch9344, int portnum, struct serial_struct __user *newinfo)
+static int ch9344_set_serial_info(struct ch9344 *ch9344, int portnum,
+				  struct serial_struct __user *newinfo)
 {
 	struct serial_struct new_serial;
 	unsigned int closing_wait, close_delay;
@@ -1667,14 +1857,17 @@ static int ch9344_set_serial_info(struct ch9344 *ch9344, int portnum, struct ser
 		return -EFAULT;
 
 	close_delay = new_serial.close_delay * 10;
-	closing_wait = new_serial.closing_wait == ASYNC_CLOSING_WAIT_NONE ? ASYNC_CLOSING_WAIT_NONE :
-									    new_serial.closing_wait * 10;
+	closing_wait = new_serial.closing_wait == ASYNC_CLOSING_WAIT_NONE ?
+			       ASYNC_CLOSING_WAIT_NONE :
+			       new_serial.closing_wait * 10;
 
 	mutex_lock(&ch9344->ttyport[portnum].port.mutex);
 
 	if (!capable(CAP_SYS_ADMIN)) {
-		if ((close_delay != ch9344->ttyport[portnum].port.close_delay) ||
-		    (closing_wait != ch9344->ttyport[portnum].port.closing_wait))
+		if ((close_delay !=
+		     ch9344->ttyport[portnum].port.close_delay) ||
+		    (closing_wait !=
+		     ch9344->ttyport[portnum].port.closing_wait))
 			retval = -EPERM;
 		else
 			retval = -EOPNOTSUPP;
@@ -1687,7 +1880,8 @@ static int ch9344_set_serial_info(struct ch9344 *ch9344, int portnum, struct ser
 	return retval;
 }
 
-static int ch9344_wait_serial_change(struct ch9344 *ch9344, int portnum, unsigned long arg)
+static int ch9344_wait_serial_change(struct ch9344 *ch9344, int portnum,
+				     unsigned long arg)
 {
 	int rv = 0;
 	DECLARE_WAITQUEUE(wait, current);
@@ -1727,7 +1921,9 @@ static int ch9344_wait_serial_change(struct ch9344 *ch9344, int portnum, unsigne
 	return rv;
 }
 
-static int ch9344_get_serial_usage(struct ch9344 *ch9344, int portnum, struct serial_icounter_struct __user *count)
+static int
+ch9344_get_serial_usage(struct ch9344 *ch9344, int portnum,
+			struct serial_icounter_struct __user *count)
 {
 	struct serial_icounter_struct icount;
 	int rv = 0;
@@ -1751,7 +1947,8 @@ static int ch9344_get_serial_usage(struct ch9344 *ch9344, int portnum, struct se
 	return rv;
 }
 
-static int ch9344_tty_ioctl(struct tty_struct *tty, unsigned int cmd, unsigned long arg)
+static int ch9344_tty_ioctl(struct tty_struct *tty, unsigned int cmd,
+			    unsigned long arg)
 {
 	struct ch9344 *ch9344 = tty->driver_data;
 	int rv = -ENOIOCTLCMD;
@@ -1767,10 +1964,14 @@ static int ch9344_tty_ioctl(struct tty_struct *tty, unsigned int cmd, unsigned l
 
 	switch (cmd) {
 	case TIOCGSERIAL: /* gets serial port data */
-		rv = ch9344_get_serial_info(ch9344, portnum, (struct serial_struct __user *)arg);
+		rv = ch9344_get_serial_info(
+			ch9344, portnum,
+			(struct serial_struct __user *)arg);
 		break;
 	case TIOCSSERIAL:
-		rv = ch9344_set_serial_info(ch9344, portnum, (struct serial_struct __user *)arg);
+		rv = ch9344_set_serial_info(
+			ch9344, portnum,
+			(struct serial_struct __user *)arg);
 		break;
 	case TIOCMIWAIT:
 		rv = usb_autopm_get_interface(ch9344->data);
@@ -1782,7 +1983,9 @@ static int ch9344_tty_ioctl(struct tty_struct *tty, unsigned int cmd, unsigned l
 		usb_autopm_put_interface(ch9344->data);
 		break;
 	case TIOCGICOUNT:
-		rv = ch9344_get_serial_usage(ch9344, portnum, (struct serial_icounter_struct __user *)arg);
+		rv = ch9344_get_serial_usage(
+			ch9344, portnum,
+			(struct serial_icounter_struct __user *)arg);
 		break;
 	case IOCTL_CMD_GETCHIPTYPE:
 		if (put_user(ch9344->chiptype, argval)) {
@@ -1802,7 +2005,8 @@ static int ch9344_tty_ioctl(struct tty_struct *tty, unsigned int cmd, unsigned l
 		get_user(arg1, (u16 __user *)arg);
 		arg2 = (unsigned long)((u8 __user *)arg + 2);
 		arg3 = (unsigned long)((u8 __user *)arg + 2 + 256);
-		rv = ch9344_cmd_in(ch9344, (u8 __user *)arg3, (int)arg1, (u8 __user *)arg2);
+		rv = ch9344_cmd_in(ch9344, (u8 __user *)arg3, (int)arg1,
+				   (u8 __user *)arg2);
 		break;
 	case IOCTL_CMD_CMDOUT:
 		get_user(arg1, (u16 __user *)arg);
@@ -1822,8 +2026,9 @@ static int ch9344_tty_ioctl(struct tty_struct *tty, unsigned int cmd, unsigned l
 		rv = copy_from_user(buffer, (u8 __user *)arg6, arg5);
 		if (rv)
 			goto out;
-		rv = ch9344_control_in(ch9344, (u8)arg1, (u8)arg2, (u16)arg3, (u16)arg4, (u8 __user *)buffer,
-				       (u16)arg5);
+		rv = ch9344_control_in(ch9344, (u8)arg1, (u8)arg2,
+				       (u16)arg3, (u16)arg4,
+				       (u8 __user *)buffer, (u16)arg5);
 		break;
 	case IOCTL_CMD_CTRLOUT:
 		get_user(arg1, (u8 __user *)arg);
@@ -1832,7 +2037,9 @@ static int ch9344_tty_ioctl(struct tty_struct *tty, unsigned int cmd, unsigned l
 		get_user(arg4, (u16 __user *)((u8 *)arg + 4));
 		get_user(arg5, (u16 __user *)((u8 *)arg + 6));
 		arg6 = (unsigned long)((u8 __user *)arg + 8);
-		rv = ch9344_control_out(ch9344, (u8)arg1, (u8)arg2, (u16)arg3, (u16)arg4, (u8 __user *)arg6, (u16)arg5);
+		rv = ch9344_control_out(ch9344, (u8)arg1, (u8)arg2,
+					(u16)arg3, (u16)arg4,
+					(u8 __user *)arg6, (u16)arg5);
 		if (rv != (u16)arg5) {
 			rv = -EINVAL;
 			goto out;
@@ -1848,14 +2055,15 @@ out:
 	return rv;
 }
 
-static int ch9344_get(int clockRate, int bval, unsigned char *bd1, unsigned char *bd2)
+static int ch9344_get(int clockRate, int bval, unsigned char *bd1,
+		      unsigned char *bd2)
 {
 	int dis, x2;
 
 	if (bval < 0 || bval > 12000000) {
 		return -1;
 	}
-	/* caculate dis from bval */
+	/* calculate dis from bval */
 	if (bval == 2000000) {
 		*bd1 = 2;
 		*bd2 = 0;
@@ -1872,7 +2080,7 @@ static int ch9344_get(int clockRate, int bval, unsigned char *bd1, unsigned char
 	return 0;
 }
 
-void cal_outdata(char *buffer, u8 rol, u8 xor)
+static void cal_outdata(char *buffer, u8 rol, u8 xor)
 {
 	u8 en_status, i;
 
@@ -1900,7 +2108,7 @@ void cal_outdata(char *buffer, u8 rol, u8 xor)
 	}
 }
 
-u8 cal_recv_tmt(__le32 bd)
+static u8 cal_recv_tmt(__le32 bd)
 {
 	int dly = 1000000 * 15 / bd;
 
@@ -1911,9 +2119,11 @@ u8 cal_recv_tmt(__le32 bd)
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0))
-static void ch9344_tty_set_termios(struct tty_struct *tty, const struct ktermios *termios_old)
+static void ch9344_tty_set_termios(struct tty_struct *tty,
+				   const struct ktermios *termios_old)
 #else
-static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *termios_old)
+static void ch9344_tty_set_termios(struct tty_struct *tty,
+				   struct ktermios *termios_old)
 #endif
 {
 	struct ch9344 *ch9344 = tty->driver_data;
@@ -1938,9 +2148,11 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 	u8 rbytes[2];
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
-	if (termios_old && !tty_termios_hw_change(&tty->termios, termios_old)) {
+	if (termios_old &&
+	    !tty_termios_hw_change(&tty->termios, termios_old)) {
 #else
-	if (termios_old && !tty_termios_hw_change(tty->termios, termios_old)) {
+	if (termios_old &&
+	    !tty_termios_hw_change(tty->termios, termios_old)) {
 #endif
 		return;
 	}
@@ -1993,9 +2205,11 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 	if (newline.bCharFormat == 2)
 		sbit = 0x04;
 
-	newline.bParityType = termios->c_cflag & PARENB ?
-				      (termios->c_cflag & PARODD ? 1 : 2) + (termios->c_cflag & CMSPAR ? 2 : 0) :
-				      0;
+	newline.bParityType =
+		termios->c_cflag & PARENB ?
+			(termios->c_cflag & PARODD ? 1 : 2) +
+				(termios->c_cflag & CMSPAR ? 2 : 0) :
+			0;
 
 	switch (newline.bParityType) {
 	case 0x01:
@@ -2036,16 +2250,19 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 	}
 
 	/* FIXME: Needs to clear unsupported bits in the termios */
-	ch9344->ttyport[portnum].clocal = ((termios->c_cflag & CLOCAL) != 0);
+	ch9344->ttyport[portnum].clocal =
+		((termios->c_cflag & CLOCAL) != 0);
 
 	if (C_BAUD(tty) == B0) {
-		newline.dwDTERate = ch9344->ttyport[portnum].line.dwDTERate;
+		newline.dwDTERate =
+			ch9344->ttyport[portnum].line.dwDTERate;
 		newctrl &= ~(CH9344_CTO_D | CH9344_CTO_R);
 	} else if (termios_old && (termios_old->c_cflag & CBAUD) == B0) {
 		newctrl |= CH9344_CTO_D | CH9344_CTO_R;
 	}
 
-	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
+	if (ch9344->chiptype == CHIP_CH9344L ||
+	    ch9344->chiptype == CHIP_CH9344Q) {
 		rgadd = 0x10 * ch9344_get_portnum(tty->index) + 0x08;
 
 		memset(buffer, 0x00, ch9344->cmdsize);
@@ -2124,7 +2341,8 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 			goto out;
 	}
 
-	if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q)
+	if (ch9344->chiptype == CHIP_CH9344L ||
+	    ch9344->chiptype == CHIP_CH9344Q)
 		rgadd = 0x10 * portnum + 0x08;
 	else {
 		if (portnum < 4)
@@ -2154,8 +2372,10 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 		}
 	}
 
-	if (memcmp(&ch9344->ttyport[portnum].line, &newline, sizeof newline)) {
-		memcpy(&ch9344->ttyport[portnum].line, &newline, sizeof newline);
+	if (memcmp(&ch9344->ttyport[portnum].line, &newline,
+		   sizeof newline)) {
+		memcpy(&ch9344->ttyport[portnum].line, &newline,
+		       sizeof newline);
 	}
 
 	if (C_CRTSCTS(tty)) {
@@ -2169,7 +2389,8 @@ static void ch9344_tty_set_termios(struct tty_struct *tty, struct ktermios *term
 		}
 	} else {
 		if (ch9344->ttyport[portnum].uartmode == M_HF) {
-			ret = ch9344_set_uartmode(ch9344, portnum, portnum, M_NOR);
+			ret = ch9344_set_uartmode(ch9344, portnum, portnum,
+						  M_NOR);
 			if (!ret) {
 				ch9344->ttyport[portnum].uartmode = M_NOR;
 			}
@@ -2209,7 +2430,8 @@ static void ch9344_write_buffers_free(struct ch9344 *ch9344)
 	for (index = 0; index < ch9344->num_ports; index++) {
 		for (i = 0; i < CH9344_NW; i++) {
 			wb = &ch9344->wb[index][i];
-			usb_free_coherent(usb_dev, ch9344->writesize, wb->buf, wb->dmah);
+			usb_free_coherent(usb_dev, ch9344->writesize,
+					  wb->buf, wb->dmah);
 		}
 	}
 }
@@ -2220,7 +2442,9 @@ static void ch9344_read_buffers_free(struct ch9344 *ch9344)
 	int i;
 
 	for (i = 0; i < ch9344->rx_buflimit; i++)
-		usb_free_coherent(usb_dev, ch9344->readsize, ch9344->read_buffers[i].base, ch9344->read_buffers[i].dma);
+		usb_free_coherent(usb_dev, ch9344->readsize,
+				  ch9344->read_buffers[i].base,
+				  ch9344->read_buffers[i].dma);
 }
 
 /* Little helper: write buffers allocate */
@@ -2232,12 +2456,18 @@ static int ch9344_write_buffers_alloc(struct ch9344 *ch9344)
 	for (index = 0; index < ch9344->num_ports; index++) {
 		for (i = 0; i < CH9344_NW; i++) {
 			wb = &ch9344->wb[index][i];
-			wb->buf = usb_alloc_coherent(ch9344->dev, ch9344->writesize, GFP_KERNEL, &wb->dmah);
+			wb->buf = usb_alloc_coherent(ch9344->dev,
+						     ch9344->writesize,
+						     GFP_KERNEL,
+						     &wb->dmah);
 			if (!wb->buf) {
 				while (i != 0) {
 					--i;
 					--wb;
-					usb_free_coherent(ch9344->dev, ch9344->writesize, wb->buf, wb->dmah);
+					usb_free_coherent(
+						ch9344->dev,
+						ch9344->writesize, wb->buf,
+						wb->dmah);
 				}
 				return -ENOMEM;
 			}
@@ -2258,7 +2488,8 @@ static int ch9344_open(struct inode *inode, struct file *file)
 
 	interface = usb_find_interface(&ch9344_driver, subminor);
 	if (!interface) {
-		pr_err("%s - error, can't find device for minor %d\n", __func__, subminor);
+		pr_err("%s - error, can't find device for minor %d\n",
+		       __func__, subminor);
 		retval = -ENODEV;
 		goto exit;
 	}
@@ -2278,18 +2509,25 @@ exit:
 
 static int ch9344_release(struct inode *inode, struct file *file)
 {
-	struct ch9344 *ch9344;
+	struct ch9344 *ch9344 = file->private_data;
 
-	ch9344 = file->private_data;
 	if (ch9344 == NULL)
 		return -ENODEV;
 
+	mutex_lock(&ch9344->mutex);
+
+	if (ch9344->disconnected) {
+		mutex_unlock(&ch9344->mutex);
+		return -ENODEV;
+	}
+	mutex_unlock(&ch9344->mutex);
 	return 0;
 }
 
-static long ch9344_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long ch9344_ioctl(struct file *file, unsigned int cmd,
+			 unsigned long arg)
 {
-	struct ch9344 *ch9344;
+	struct ch9344 *ch9344 = file->private_data;
 	int rv = -ENOIOCTLCMD;
 	u8 uartmode;
 	int i;
@@ -2304,13 +2542,21 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	u8 portindex;
 	u8 *buffer;
 
-	ch9344 = file->private_data;
 	if (ch9344 == NULL)
 		return -ENODEV;
 
+	mutex_lock(&ch9344->mutex);
+
+	if (ch9344->disconnected) {
+		rv = -ENODEV;
+		goto out_unfree;
+	}
+
 	buffer = kmalloc(8, GFP_KERNEL);
-	if (!buffer)
-		return -ENOMEM;
+	if (!buffer) {
+		rv = -ENOMEM;
+		goto out_unfree;
+	}
 
 	switch (cmd) {
 	case IOCTL_CMD_GETCHIPTYPE:
@@ -2327,34 +2573,42 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 		inargH = inarg >> 8;
 		inargL = inarg;
-		if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
+		if (ch9344->chiptype == CHIP_CH9344L ||
+		    ch9344->chiptype == CHIP_CH9344Q) {
 			portindex = inargH;
 			if (inargL)
 				uartmode = M_IO;
 			else
 				uartmode = M_NOR;
-			if ((portindex > 3) || (ch9344->ttyport[portindex].uartmode == M_HF)) {
+			if ((portindex > 3) ||
+			    (ch9344->ttyport[portindex].uartmode ==
+			     M_HF)) {
 				rv = -EINVAL;
 				goto out;
 			}
 			mutex_lock(&ch9344->gpiomutex);
-			rv = ch9344_set_uartmode(ch9344, portindex, portindex, uartmode);
+			rv = ch9344_set_uartmode(ch9344, portindex,
+						 portindex, uartmode);
 			if (!rv) {
-				ch9344->ttyport[portindex].uartmode = uartmode;
+				ch9344->ttyport[portindex].uartmode =
+					uartmode;
 				if (uartmode == M_NOR) {
 					/* restores gpio related vars here */
-					for (i = portindex * 3; i < portindex * 3 + 3; i++) {
+					for (i = portindex * 3;
+					     i < portindex * 3 + 3; i++) {
 						ch9344->gpiodir[i] = G_DI;
 						ch9344->gpioval[i] = IO_L;
 					}
 				}
 			}
 			mutex_unlock(&ch9344->gpiomutex);
-		} else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
+		} else if (ch9344->chiptype == CHIP_CH348L ||
+			   ch9344->chiptype == CHIP_CH348Q) {
 			gpiogroup = inargH;
 			gpioenable = inargL;
 			mutex_lock(&ch9344->gpiomutex);
-			rv = ch348_gpioenable(ch9344, gpiogroup, gpioenable);
+			rv = ch348_gpioenable(ch9344, gpiogroup,
+					      gpioenable);
 			mutex_unlock(&ch9344->gpiomutex);
 		}
 		break;
@@ -2366,30 +2620,36 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		/* inargH indicates gpio number, inargL indicates gpio direction */
 		inargH = inarg >> 8;
 		inargL = inarg;
-		if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
+		if (ch9344->chiptype == CHIP_CH9344L ||
+		    ch9344->chiptype == CHIP_CH9344Q) {
 			gpionumber = inargH;
 			gpiogroup = gpionumber / 3;
 			if (inargL)
 				gpiodir = G_DO;
 			else
 				gpiodir = G_DI;
-			if ((gpionumber > MAXGPIO) || (ch9344->ttyport[gpiogroup].uartmode != M_IO)) {
+			if ((gpionumber > MAXGPIO) ||
+			    (ch9344->ttyport[gpiogroup].uartmode !=
+			     M_IO)) {
 				rv = -EINVAL;
 				goto out;
 			}
 			mutex_lock(&ch9344->gpiomutex);
-			rv = ch9344_set_gpiodir(ch9344, gpiogroup, gpionumber, gpiodir);
+			rv = ch9344_set_gpiodir(ch9344, gpiogroup,
+						gpionumber, gpiodir);
 			if (!rv) {
 				ch9344->gpiodir[gpionumber] = gpiodir;
 				if (gpiodir == G_DI)
 					ch9344->gpioval[gpionumber] = IO_H;
 			}
 			mutex_unlock(&ch9344->gpiomutex);
-		} else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
+		} else if (ch9344->chiptype == CHIP_CH348L ||
+			   ch9344->chiptype == CHIP_CH348Q) {
 			mutex_lock(&ch9344->gpiomutex);
 			gpionumber = inargH;
 			gpiodir = inargL;
-			rv = ch348_set_gpiodir(ch9344, gpionumber, gpiodir);
+			rv = ch348_set_gpiodir(ch9344, gpionumber,
+					       gpiodir);
 			mutex_unlock(&ch9344->gpiomutex);
 		}
 		break;
@@ -2401,29 +2661,35 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		/* inargH indicates gpio number, inargL indicates gpio output value */
 		inargH = inarg >> 8;
 		inargL = inarg;
-		if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
+		if (ch9344->chiptype == CHIP_CH9344L ||
+		    ch9344->chiptype == CHIP_CH9344Q) {
 			gpionumber = inargH;
 			gpiogroup = gpionumber / 3;
 			if (inargL)
 				gpioval = IO_H;
 			else
 				gpioval = IO_L;
-			if ((gpionumber > MAXGPIO) || (ch9344->ttyport[gpiogroup].uartmode != M_IO) ||
+			if ((gpionumber > MAXGPIO) ||
+			    (ch9344->ttyport[gpiogroup].uartmode !=
+			     M_IO) ||
 			    (ch9344->gpiodir[gpionumber] != G_DO)) {
 				rv = -EINVAL;
 				goto out;
 			}
 			mutex_lock(&ch9344->gpiomutex);
-			rv = ch9344_set_gpioval(ch9344, gpiogroup, gpionumber, gpioval);
+			rv = ch9344_set_gpioval(ch9344, gpiogroup,
+						gpionumber, gpioval);
 			if (!rv) {
 				ch9344->gpioval[gpionumber] = gpioval;
 			}
 			mutex_unlock(&ch9344->gpiomutex);
-		} else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
+		} else if (ch9344->chiptype == CHIP_CH348L ||
+			   ch9344->chiptype == CHIP_CH348Q) {
 			mutex_lock(&ch9344->gpiomutex);
 			gpionumber = inargH;
 			gpioval = inargL;
-			rv = ch348_set_gpioval(ch9344, gpionumber, gpioval);
+			rv = ch348_set_gpioval(ch9344, gpionumber,
+					       gpioval);
 			mutex_unlock(&ch9344->gpiomutex);
 		}
 		break;
@@ -2435,10 +2701,13 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		/* inargH indicates gpio number, inargL indicates gpio output value */
 		inargH = inarg >> 8;
 		inargL = inarg;
-		if (ch9344->chiptype == CHIP_CH9344L || ch9344->chiptype == CHIP_CH9344Q) {
+		if (ch9344->chiptype == CHIP_CH9344L ||
+		    ch9344->chiptype == CHIP_CH9344Q) {
 			gpionumber = inargH;
 			gpiogroup = gpionumber / 3;
-			if ((gpionumber > MAXGPIO) || (ch9344->ttyport[gpiogroup].uartmode != M_IO) ||
+			if ((gpionumber > MAXGPIO) ||
+			    (ch9344->ttyport[gpiogroup].uartmode !=
+			     M_IO) ||
 			    (ch9344->gpiodir[gpionumber] != G_DI)) {
 				rv = -EINVAL;
 				goto out;
@@ -2446,22 +2715,27 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			mutex_lock(&ch9344->gpiomutex);
 			rv = ch9344_get_gpioval(ch9344, gpiogroup);
 			if (!rv) {
-				gpioval = ((ch9344->gpiovalin) & (1 << gpionumber)) ? IO_H : IO_L;
+				gpioval = ((ch9344->gpiovalin) &
+					   (1 << gpionumber)) ?
+						  IO_H :
+						  IO_L;
 				if (put_user(gpioval, argval)) {
 					rv = -EFAULT;
-					goto out;
 				}
 			}
 			mutex_unlock(&ch9344->gpiomutex);
-		} else if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) {
+		} else if (ch9344->chiptype == CHIP_CH348L ||
+			   ch9344->chiptype == CHIP_CH348Q) {
 			gpionumber = inargH;
 			mutex_lock(&ch9344->gpiomutex);
 			rv = ch348_get_gpioval(ch9344);
 			if (!rv) {
-				gpioval = ((ch9344->gpiovalins) & ((u64)1 << gpionumber)) ? IO_H : IO_L;
+				gpioval = ((ch9344->gpiovalins) &
+					   ((u64)1 << gpionumber)) ?
+						  IO_H :
+						  IO_L;
 				if (put_user(gpioval, argval)) {
 					rv = -EFAULT;
-					goto out;
 				}
 			}
 			mutex_unlock(&ch9344->gpiomutex);
@@ -2473,11 +2747,15 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 out:
 	kfree(buffer);
+out_unfree:
+	mutex_unlock(&ch9344->mutex);
+
 	return rv;
 }
 
 #ifdef CONFIG_COMPAT
-static long ch9344_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long ch9344_compat_ioctl(struct file *file, unsigned int cmd,
+				unsigned long arg)
 {
 	return ch9344_ioctl(file, cmd, arg);
 }
@@ -2503,7 +2781,8 @@ static struct usb_class_driver ch9344_class = {
 	.minor_base = USB_MINOR_BASE,
 };
 
-static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *id)
+static int ch9344_probe(struct usb_interface *intf,
+			const struct usb_device_id *id)
 {
 	struct usb_interface *data_interface;
 	struct usb_endpoint_descriptor *epcmdread = NULL;
@@ -2576,10 +2855,14 @@ static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *
 	mutex_init(&ch9344->mutex);
 	mutex_init(&ch9344->gpiomutex);
 
-	ch9344->rx_endpoint = usb_rcvbulkpipe(usb_dev, epread->bEndpointAddress);
-	ch9344->tx_endpoint = usb_sndbulkpipe(usb_dev, epwrite->bEndpointAddress);
-	ch9344->cmdrx_endpoint = usb_rcvbulkpipe(usb_dev, epcmdread->bEndpointAddress);
-	ch9344->cmdtx_endpoint = usb_sndbulkpipe(usb_dev, epcmdwrite->bEndpointAddress);
+	ch9344->rx_endpoint =
+		usb_rcvbulkpipe(usb_dev, epread->bEndpointAddress);
+	ch9344->tx_endpoint =
+		usb_sndbulkpipe(usb_dev, epwrite->bEndpointAddress);
+	ch9344->cmdrx_endpoint =
+		usb_rcvbulkpipe(usb_dev, epcmdread->bEndpointAddress);
+	ch9344->cmdtx_endpoint =
+		usb_sndbulkpipe(usb_dev, epcmdwrite->bEndpointAddress);
 	ch9344->idProduct = id->idProduct;
 	if (ch9344->idProduct == 0xe018) {
 		rv = ch9344_enum_chiptype(ch9344);
@@ -2603,8 +2886,10 @@ static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *
 		tty_set_portdata(&ch9344->ttyport[i], ch9344);
 		ch9344->ttyport[i].portnum = i;
 		ch9344->ttyport[i].write_empty = true;
-		ch9344->ttyport[i].port.closing_wait = msecs_to_jiffies(DEFAULT_CLOSETIMEOUT);
-		ch9344->ttyport[i].port.close_delay = msecs_to_jiffies(DEFAULT_CLOSETIMEOUT);
+		ch9344->ttyport[i].port.closing_wait =
+			msecs_to_jiffies(DEFAULT_CLOSETIMEOUT);
+		ch9344->ttyport[i].port.close_delay =
+			msecs_to_jiffies(DEFAULT_CLOSETIMEOUT);
 		init_waitqueue_head(&ch9344->ttyport[i].wioctl);
 		init_waitqueue_head(&ch9344->ttyport[i].wmodemioctl);
 		INIT_WORK(&ch9344->ttyport[i].work, ch9344_softint);
@@ -2613,7 +2898,8 @@ static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *
 	init_usb_anchor(&ch9344->delayed);
 	ch9344->quirks = quirks;
 
-	buf = usb_alloc_coherent(usb_dev, cmdsize, GFP_KERNEL, &ch9344->cmdread_dma);
+	buf = usb_alloc_coherent(usb_dev, cmdsize, GFP_KERNEL,
+				 &ch9344->cmdread_dma);
 	if (!buf)
 		goto alloc_fail2;
 	ch9344->cmdread_buffer = buf;
@@ -2629,7 +2915,8 @@ static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *
 		struct ch9344_rb *rb = &(ch9344->read_buffers[i]);
 		struct urb *urb;
 
-		rb->base = usb_alloc_coherent(ch9344->dev, readsize, GFP_KERNEL, &rb->dma);
+		rb->base = usb_alloc_coherent(ch9344->dev, readsize,
+					      GFP_KERNEL, &rb->dma);
 		if (!rb->base)
 			goto alloc_fail6;
 		rb->index = i;
@@ -2642,7 +2929,8 @@ static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *
 		urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
 		urb->transfer_dma = rb->dma;
 
-		usb_fill_bulk_urb(urb, ch9344->dev, ch9344->rx_endpoint, rb->base, ch9344->readsize,
+		usb_fill_bulk_urb(urb, ch9344->dev, ch9344->rx_endpoint,
+				  rb->base, ch9344->readsize,
 				  ch9344_read_bulk_callback, rb);
 
 		ch9344->read_urbs[i] = urb;
@@ -2657,16 +2945,23 @@ static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *
 			if (snd->urb == NULL)
 				goto alloc_fail7;
 
-			usb_fill_bulk_urb(snd->urb, usb_dev, usb_sndbulkpipe(usb_dev, epwrite->bEndpointAddress), NULL,
-					  ch9344->writesize, ch9344_write_bulk, snd);
-			snd->urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
+			usb_fill_bulk_urb(
+				snd->urb, usb_dev,
+				usb_sndbulkpipe(usb_dev,
+						epwrite->bEndpointAddress),
+				NULL, ch9344->writesize, ch9344_write_bulk,
+				snd);
+			snd->urb->transfer_flags |=
+				URB_NO_TRANSFER_DMA_MAP;
 			snd->instance = ch9344;
 		}
 	}
 
 	usb_set_intfdata(intf, ch9344);
-	usb_fill_bulk_urb(ch9344->cmdreadurb, usb_dev, usb_rcvbulkpipe(usb_dev, epcmdread->bEndpointAddress),
-			  ch9344->cmdread_buffer, cmdsize, ch9344_cmd_irq, ch9344);
+	usb_fill_bulk_urb(
+		ch9344->cmdreadurb, usb_dev,
+		usb_rcvbulkpipe(usb_dev, epcmdread->bEndpointAddress),
+		ch9344->cmdread_buffer, cmdsize, ch9344_cmd_irq, ch9344);
 	ch9344->cmdreadurb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
 	ch9344->cmdreadurb->transfer_dma = ch9344->cmdread_dma;
 
@@ -2677,21 +2972,25 @@ static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *
 	for (i = 0; i < portnum; i++) {
 		ch9344->ttyport[i].line.dwDTERate = 9600;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
-		tty_dev = tty_port_register_device(&ch9344->ttyport[i].port, ch9344_tty_driver, NUMSTEP * minor + i,
-						   &data_interface->dev);
+		tty_dev = tty_port_register_device(
+			&ch9344->ttyport[i].port, ch9344_tty_driver,
+			NUMSTEP * minor + i, &data_interface->dev);
 		if (IS_ERR(tty_dev)) {
 			rv = PTR_ERR(tty_dev);
 			goto alloc_fail7;
 		}
 #else
-		tty_register_device(ch9344_tty_driver, NUMSTEP * minor + i, &data_interface->dev);
+		tty_register_device(ch9344_tty_driver, NUMSTEP * minor + i,
+				    &data_interface->dev);
 #endif
 	}
 
 	/* deal with urb when usb plugged in */
 	rv = usb_submit_urb(ch9344->cmdreadurb, GFP_KERNEL);
 	if (rv) {
-		dev_err(&ch9344->data->dev, "%s - usb_submit_urb(ctrl cmd) failed\n", __func__);
+		dev_err(&ch9344->data->dev,
+			"%s - usb_submit_urb(ctrl cmd) failed\n",
+			__func__);
 		goto error_submit_urb;
 	}
 
@@ -2703,13 +3002,15 @@ static int ch9344_probe(struct usb_interface *intf, const struct usb_device_id *
 	rv = usb_register_dev(intf, &ch9344_class);
 	if (rv) {
 		/* error when registering this driver */
-		dev_err(&ch9344->data->dev, "Not able to get a minor for this device.\n");
+		dev_err(&ch9344->data->dev,
+			"Not able to get a minor for this device.\n");
 		usb_set_intfdata(intf, NULL);
 		goto error_submit_read_urbs;
 	}
 
-	dev_info(&intf->dev, "ttyCH9344USB from %d - %d: ch9344 device attached.\n", NUMSTEP * minor,
-		 NUMSTEP * minor + portnum - 1);
+	dev_info(&intf->dev,
+		 "ttyCH9344USB from %d - %d: ch9344 device attached.\n",
+		 NUMSTEP * minor, NUMSTEP * minor + portnum - 1);
 
 	return 0;
 
@@ -2732,7 +3033,8 @@ alloc_fail6:
 alloc_fail5:
 	ch9344_write_buffers_free(ch9344);
 alloc_fail4:
-	usb_free_coherent(usb_dev, cmdsize, ch9344->cmdread_buffer, ch9344->cmdread_dma);
+	usb_free_coherent(usb_dev, cmdsize, ch9344->cmdread_buffer,
+			  ch9344->cmdread_dma);
 enum_fail:
 alloc_fail2:
 	ch9344_release_minor(ch9344);
@@ -2805,7 +3107,8 @@ static void ch9344_disconnect(struct usb_interface *intf)
 	stop_data_traffic(ch9344);
 
 	for (i = 0; i < num_ports; i++) {
-		tty_unregister_device(ch9344_tty_driver, NUMSTEP * ch9344->minor + i);
+		tty_unregister_device(ch9344_tty_driver,
+				      NUMSTEP * ch9344->minor + i);
 	}
 
 	usb_free_urb(ch9344->cmdreadurb);
@@ -2817,7 +3120,8 @@ static void ch9344_disconnect(struct usb_interface *intf)
 	for (i = 0; i < ch9344->rx_buflimit; i++)
 		usb_free_urb(ch9344->read_urbs[i]);
 	ch9344_write_buffers_free(ch9344);
-	usb_free_coherent(usb_dev, ch9344->cmdsize, ch9344->cmdread_buffer, ch9344->cmdread_dma);
+	usb_free_coherent(usb_dev, ch9344->cmdsize, ch9344->cmdread_buffer,
+			  ch9344->cmdread_dma);
 	ch9344_read_buffers_free(ch9344);
 
 	usb_driver_release_interface(&ch9344_driver, ch9344->data);
@@ -2897,10 +3201,13 @@ static int ch9344_reset_resume(struct usb_interface *intf)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0))
 		if (tty_port_initialized(&ch9344->ttyport[i].port)) {
 #else
-		if (test_bit(ASYNCB_INITIALIZED, &ch9344->ttyport[i].port.flags)) {
+		if (test_bit(ASYNCB_INITIALIZED,
+			     &ch9344->ttyport[i].port.flags)) {
 #endif
-			retval = ch9344_port_activate(&ch9344->ttyport[i].port,
-						      tty_port_tty_get(&ch9344->ttyport[i].port));
+			retval = ch9344_port_activate(
+				&ch9344->ttyport[i].port,
+				tty_port_tty_get(
+					&ch9344->ttyport[i].port));
 			if (retval)
 				goto error_activate;
 		}
@@ -2916,13 +3223,15 @@ error_activate:
 /*
  * USB driver structure.
  */
-static const struct usb_device_id ch9344_ids[] = { {
-							   USB_DEVICE(0x1a86, 0xe018),
-						   }, /* ch9344 chip */
-						   {
-							   USB_DEVICE(0x1a86, 0x55d9),
-						   }, /* ch348 chip */
-						   {} };
+static const struct usb_device_id ch9344_ids[] = {
+	{
+		USB_DEVICE(0x1a86, 0xe018),
+	}, /* ch9344 chip */
+	{
+		USB_DEVICE(0x1a86, 0x55d9),
+	}, /* ch348 chip */
+	{}
+};
 
 MODULE_DEVICE_TABLE(usb, ch9344_ids);
 
@@ -2969,7 +3278,9 @@ static int __init ch9344_init(void)
 	int retval;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-	ch9344_tty_driver = tty_alloc_driver(CH9344_TTY_MINORS, TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV);
+	ch9344_tty_driver = tty_alloc_driver(
+		CH9344_TTY_MINORS,
+		TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV);
 	if (IS_ERR(ch9344_tty_driver))
 		return PTR_ERR(ch9344_tty_driver);
 #else
@@ -2977,14 +3288,19 @@ static int __init ch9344_init(void)
 	if (!ch9344_tty_driver)
 		return -ENOMEM;
 #endif
-	ch9344_tty_driver->driver_name = "ch9344", ch9344_tty_driver->name = "ttyCH9344USB",
-	ch9344_tty_driver->major = CH9344_TTY_MAJOR, ch9344_tty_driver->minor_start = 0,
-	ch9344_tty_driver->type = TTY_DRIVER_TYPE_SERIAL, ch9344_tty_driver->subtype = SERIAL_TYPE_NORMAL,
+	ch9344_tty_driver->driver_name = "ch9344",
+	ch9344_tty_driver->name = "ttyCH9344USB",
+	ch9344_tty_driver->major = CH9344_TTY_MAJOR,
+	ch9344_tty_driver->minor_start = 0,
+	ch9344_tty_driver->type = TTY_DRIVER_TYPE_SERIAL,
+	ch9344_tty_driver->subtype = SERIAL_TYPE_NORMAL,
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
-	ch9344_tty_driver->flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
+	ch9344_tty_driver->flags = TTY_DRIVER_REAL_RAW |
+				   TTY_DRIVER_DYNAMIC_DEV;
 #endif
 	ch9344_tty_driver->init_termios = tty_std_termios;
-	ch9344_tty_driver->init_termios.c_cflag = B50 | CS8 | CREAD | HUPCL | CLOCAL;
+	ch9344_tty_driver->init_termios.c_cflag = B50 | CS8 | CREAD |
+						  HUPCL | CLOCAL;
 	tty_set_operations(ch9344_tty_driver, &ch9344_ops);
 
 	retval = tty_register_driver(ch9344_tty_driver);

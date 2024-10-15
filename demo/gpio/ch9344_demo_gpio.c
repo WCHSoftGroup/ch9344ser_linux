@@ -1,5 +1,6 @@
 /*
- * gpio application example for USB to Quad UARTs chip ch9344 and USB to Octal UARTs chip ch348.
+ * gpio application example for USB to Quad UARTs chip ch9344 and
+ * USB to Octal UARTs chip ch348.
  *
  * Copyright (C) 2024 Nanjing Qinheng Microelectronics Co., Ltd.
  * Web: http://wch.cn
@@ -67,12 +68,16 @@ void libch9344_gpiotest(int fd)
 		switch (c) {
 		case 'e':
 			for (i = 0; i < gpiogroup; i++) {
-				if (chiptype == CHIP_CH9344L || chiptype == CHIP_CH9344Q)
-					ret = libch9344_gpioenable(fd, i, 0x01);
+				if (chiptype == CHIP_CH9344L ||
+				    chiptype == CHIP_CH9344Q)
+					ret = libch9344_gpioenable(fd, i,
+								   0x01);
 				else
-					ret = libch9344_gpioenable(fd, i, 0xff);
+					ret = libch9344_gpioenable(fd, i,
+								   0xff);
 				if (ret != 0) {
-					printf("gpio %d enable failed.\n", i);
+					printf("gpio %d enable failed.\n",
+					       i);
 					break;
 				}
 			}
@@ -81,7 +86,8 @@ void libch9344_gpiotest(int fd)
 			for (i = 0; i < gpiogroup; i++) {
 				ret = libch9344_gpioenable(fd, i, 0x00);
 				if (ret != 0) {
-					printf("gpio %d disable failed.\n", i);
+					printf("gpio %d disable failed.\n",
+					       i);
 					break;
 				}
 			}
@@ -90,7 +96,8 @@ void libch9344_gpiotest(int fd)
 			for (i = 0; i < gpiocount; i++) {
 				ret = libch9344_gpiodirset(fd, i, 0x01);
 				if (ret != 0) {
-					printf("gpio %d direction output set failed.\n", i);
+					printf("gpio %d direction output set failed.\n",
+					       i);
 					break;
 				}
 			}
@@ -99,7 +106,8 @@ void libch9344_gpiotest(int fd)
 			for (i = 0; i < gpiocount; i++) {
 				ret = libch9344_gpiodirset(fd, i, 0x00);
 				if (ret != 0) {
-					printf("gpio %d direction input set failed.\n", i);
+					printf("gpio %d direction input set failed.\n",
+					       i);
 					break;
 				}
 			}
@@ -108,7 +116,8 @@ void libch9344_gpiotest(int fd)
 			for (i = 0; i < gpiocount; i++) {
 				ret = libch9344_gpioset(fd, i, 0x01);
 				if (ret != 0) {
-					printf("gpio %d level set failed.\n", i);
+					printf("gpio %d level set failed.\n",
+					       i);
 					break;
 				}
 			}
@@ -117,7 +126,8 @@ void libch9344_gpiotest(int fd)
 			for (i = 0; i < gpiocount; i++) {
 				ret = libch9344_gpioset(fd, i, 0x00);
 				if (ret != 0) {
-					printf("gpio %d level set failed.\n", i);
+					printf("gpio %d level set failed.\n",
+					       i);
 					break;
 				}
 			}
@@ -126,10 +136,12 @@ void libch9344_gpiotest(int fd)
 			for (i = 0; i < gpiocount; i++) {
 				ret = libch9344_gpioget(fd, i, &gpioval);
 				if (ret != 0) {
-					printf("gpio %d level get failed.\n", i);
+					printf("gpio %d level get failed.\n",
+					       i);
 					break;
 				} else
-					printf("gpio%d : %s\n", i, gpioval ? "high" : "low");
+					printf("gpio%d : %s\n", i,
+					       gpioval ? "high" : "low");
 			}
 			break;
 		default:
