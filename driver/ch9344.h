@@ -141,7 +141,7 @@ struct ch9344_ttyport {
 	int portnum;
 	void *portdata;
 	bool write_empty;
-	struct usb_ch9344_line_coding line; /* bits, stop, parity */
+	struct usb_ch9344_line_coding line; /* baudrate, data format */
 	unsigned int ctrlin; /* input lines (CTS, DSR, DCD, RI) */
 	unsigned int ctrlout; /* output control lines (DTR, RTS) */
 	struct async_icount iocount; /* counters for control line changes */
@@ -212,15 +212,13 @@ struct ch9344 {
 	bool cfg_recv;
 	u16 cfgindex;
 	wait_queue_head_t wcfgioctl; /* for config ioctl */
-	unsigned int
-		writesize; /* max packet size for the output bulk endpoint */
+	unsigned int writesize; /* max packet size */
 	unsigned int readsize, cmdsize; /* buffer sizes for freeing */
 	unsigned int ctrlsize;
 	unsigned int minor; /* ch9344 minor number */
 	unsigned int susp_count; /* number of suspended interfaces */
 	u8 bInterval;
-	struct usb_anchor
-		delayed; /* writes queued for a device about to be woken */
+	struct usb_anchor delayed; /* used for a device about to be woken */
 	unsigned long quirks;
 	struct kref kref;
 };
