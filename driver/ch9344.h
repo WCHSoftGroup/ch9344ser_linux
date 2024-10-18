@@ -87,6 +87,7 @@
 #define R_EE_CFG 0xA9
 
 #define CMD_VER 0x96
+#define FIFOSIZE 4096
 
 #define CH9344_NW 4
 #define CH9344_NR 4
@@ -152,6 +153,11 @@ struct ch9344_ttyport {
 	wait_queue_head_t wmodemioctl; /* for ioctl */
 	bool isopen;
 	struct work_struct work; /* used for line discipline waking up */
+	struct timer_list timer;
+	struct kfifo rfifo;
+	int rlen;
+	int rtimes;
+	int interval;
 };
 
 enum CHIPTYPE {
