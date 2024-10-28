@@ -33,7 +33,7 @@ extern int libch9344_open(const char *devname);
  * libch9344_close - close ch9344 device
  * @fd: file descriptor of ch9344 tty device or gpio device
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_close(int fd);
 
@@ -42,7 +42,7 @@ extern int libch9344_close(int fd);
  * @fd: file descriptor of ch9344 tty device or gpio device
  * @type: pointer to chip model
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_get_chiptype(int fd, CH9344_CHIPTYPE *type);
 
@@ -53,7 +53,7 @@ extern int libch9344_get_chiptype(int fd, CH9344_CHIPTYPE *type);
  * @fd: file descriptor of ch9344 tty device
  * @index: pointer to uart index
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_get_uartindex(int fd, uint8_t *index);
 
@@ -67,7 +67,7 @@ extern int libch9344_get_uartindex(int fd, uint8_t *index);
  * @data: pointer to the data to receive
  * @size: length in bytes of the data to receive
  *
- * The function return the number of bytes transferred if success.
+ * The function returns the number of bytes transferred if successful.
  * Otherwise, a negative error number.
  */
 extern int libch9344_control_msg_in(int fd, uint8_t request,
@@ -85,7 +85,7 @@ extern int libch9344_control_msg_in(int fd, uint8_t request,
  * @data: pointer to the data to send
  * @size: length in bytes of the data to send
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_control_msg_out(int fd, uint8_t request,
 				     uint8_t requesttype, uint16_t value,
@@ -99,7 +99,7 @@ extern int libch9344_control_msg_out(int fd, uint8_t request,
  * @size: length in bytes of the data to send
  * @rdata: pointer to the data to receive
  *
- * The function return the number of bytes received if success.
+ * The function returns the number of bytes received if successful.
  * Otherwise, a negative error number.
  */
 extern int libch9344_cmd_msg_in(int fd, uint8_t *sdata, uint16_t size,
@@ -111,7 +111,7 @@ extern int libch9344_cmd_msg_in(int fd, uint8_t *sdata, uint16_t size,
  * @data: pointer to the data to send
  * @size: length in bytes of the data to send
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_cmd_msg_out(int fd, uint8_t *data, uint16_t size);
 
@@ -128,7 +128,7 @@ extern int libch9344_cmd_msg_out(int fd, uint8_t *data, uint16_t size);
  *             CH348L&Q: bits0-7 on gpio[0*N-7*N],
  *                     1 on enable, 0 on disable
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_gpioenable(int fd, uint8_t gpiogroup,
 				uint8_t gpioenable);
@@ -139,7 +139,7 @@ extern int libch9344_gpioenable(int fd, uint8_t gpiogroup,
  * @gpionumber: gpio number
  * @gpiodir: gpio direction value, 1 on output, 0 on input
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_gpiodirset(int fd, uint8_t gpionumber,
 				uint8_t gpiodir);
@@ -150,7 +150,7 @@ extern int libch9344_gpiodirset(int fd, uint8_t gpionumber,
  * @gpionumber: gpio number
  * @gpioval: gpio output value, 1 on high, 0 on low
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_gpioset(int fd, uint8_t gpionumber, uint8_t gpioval);
 
@@ -160,7 +160,7 @@ extern int libch9344_gpioset(int fd, uint8_t gpionumber, uint8_t gpioval);
  * @gpionumber: gpio number
  * @gpioval: pointer to gpio input value, 1 on high, 0 on low
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_gpioget(int fd, uint8_t gpionumber, uint8_t *gpioval);
 
@@ -168,7 +168,7 @@ extern int libch9344_gpioget(int fd, uint8_t gpionumber, uint8_t *gpioval);
  * libch9344_get_gpio_count - get gpio amounts of specific chip model
  * @chiptype: chip model
  *
- * The function return value larger then 0 if success, -1 if fail.
+ * The function returns value larger then 0 if successful, -1 if fails.
  */
 extern int libch9344_get_gpio_count(CH9344_CHIPTYPE chiptype);
 
@@ -176,7 +176,7 @@ extern int libch9344_get_gpio_count(CH9344_CHIPTYPE chiptype);
  * libch9344_get_gpio_group - get gpio groups of specific chip model
  * @chiptype: chip model
  *
- * The function return value larger then 0 if success, -1 if fail.
+ * The function returns value larger then 0 if successful, -1 if fails.
  */
 extern int libch9344_get_gpio_group(CH9344_CHIPTYPE chiptype);
 
@@ -186,7 +186,7 @@ extern int libch9344_get_gpio_group(CH9344_CHIPTYPE chiptype);
  * @offset: offset address of eeprom
  * @val: pointer to read value
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_eeprom_read_byte(int fd, uint8_t offset,
 				      uint8_t *val);
@@ -197,7 +197,7 @@ extern int libch9344_eeprom_read_byte(int fd, uint8_t offset,
  * @offset: offset address of eeprom
  * @val: value to write
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_eeprom_write_byte(int fd, uint8_t offset,
 				       uint8_t val);
@@ -209,7 +209,7 @@ extern int libch9344_eeprom_write_byte(int fd, uint8_t offset,
  * @data: pointer to read values
  * @size: read length
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_eeprom_read_area(int fd, uint8_t offset,
 				      uint8_t *data, uint8_t size);
@@ -221,7 +221,7 @@ extern int libch9344_eeprom_read_area(int fd, uint8_t offset,
  * @data: values to write
  * @size: write length
  *
- * The function return 0 if success, others if fail.
+ * The function returns 0 if successful, others if fails.
  */
 extern int libch9344_eeprom_write_area(int fd, uint8_t offset,
 				       uint8_t *data, uint8_t size);

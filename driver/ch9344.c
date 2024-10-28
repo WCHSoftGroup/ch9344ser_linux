@@ -906,7 +906,7 @@ static int ch9344_submit_read_urbs(struct ch9344 *ch9344, gfp_t mem_flags)
 }
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0))
-void timer_function(unsigned long arg)
+static void timer_function(unsigned long arg)
 {
 	unsigned char *buffer;
 	struct ch9344_ttyport *ttyport = (struct ch9344_ttyport *)arg;
@@ -921,7 +921,7 @@ void timer_function(unsigned long arg)
 	kfree(buffer);
 }
 #else
-void timer_function(struct timer_list *t)
+static void timer_function(struct timer_list *t)
 {
 	unsigned char *buffer;
 	struct ch9344_ttyport *ttyport = from_timer(ttyport, t, timer);
@@ -1215,6 +1215,7 @@ static void ch9344_port_destruct(struct tty_port *port)
 	if (ch9344->opencounts-- == 1) {
 		ch9344_release_minor(ch9344);
 		usb_put_intf(ch9344->data);
+		memset(ch9344, 0x00, sizeof(struct ch9344));
 		kfree(ch9344);
 	}
 }
@@ -2573,7 +2574,7 @@ static int ch9344_release(struct inode *inode, struct file *file)
 {
 	struct ch9344 *ch9344 = file->private_data;
 
-	if (ch9344 == NULL)
+	if (ch9344 == NULL || ch9344->io_id != IOID)
 		return -ENODEV;
 
 	mutex_lock(&ch9344->mutex);
@@ -2604,7 +2605,7 @@ static long ch9344_ioctl(struct file *file, unsigned int cmd,
 	u8 portindex;
 	u8 *buffer;
 
-	if (ch9344 == NULL)
+	if (ch9344 == NULL || ch9344->io_id != IOID)
 		return -ENODEV;
 
 	mutex_lock(&ch9344->mutex);
@@ -3076,6 +3077,8 @@ static int ch9344_probe(struct usb_interface *intf,
 		usb_set_intfdata(intf, NULL);
 		goto error_submit_read_urbs;
 	}
+
+	ch9344->io_id = IOID;
 
 	dev_info(&intf->dev,
 		 "ttyCH9344USB from %d - %d: ch9344 device attached.\n",
