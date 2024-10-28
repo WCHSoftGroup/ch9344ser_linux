@@ -99,6 +99,8 @@
 #define IO_H 1
 #define IO_L 0
 
+#define IOID 0x57136824
+
 /*
  * Internal driver structures.
  */
@@ -227,6 +229,7 @@ struct ch9344 {
 	struct usb_anchor delayed; /* used for a device about to be woken */
 	unsigned long quirks;
 	struct kref kref;
+	u32 io_id;
 };
 
 /* constants describing various quirks and errors */
