@@ -906,11 +906,7 @@ static int ch9344_submit_read_urbs(struct ch9344 *ch9344, gfp_t mem_flags)
 }
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0))
-<<<<<<< Updated upstream
-void timer_function(unsigned long arg)
-=======
 static void timer_function(unsigned long arg)
->>>>>>> Stashed changes
 {
 	unsigned char *buffer;
 	struct ch9344_ttyport *ttyport = (struct ch9344_ttyport *)arg;
@@ -925,11 +921,7 @@ static void timer_function(unsigned long arg)
 	kfree(buffer);
 }
 #else
-<<<<<<< Updated upstream
-void timer_function(struct timer_list *t)
-=======
 static void timer_function(struct timer_list *t)
->>>>>>> Stashed changes
 {
 	unsigned char *buffer;
 	struct ch9344_ttyport *ttyport = from_timer(ttyport, t, timer);
