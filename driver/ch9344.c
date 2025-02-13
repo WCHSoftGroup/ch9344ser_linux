@@ -62,7 +62,12 @@
 #include <linux/timer.h>
 #include <linux/kfifo.h>
 #include <asm/byteorder.h>
-#include <asm/unaligned.h>
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+#include <asm/unaligned.h>  // For kernels before 6.12
+#else
+#include <linux/unaligned.h>  // For kernels 6.12 and above
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
 #include <linux/sched/signal.h>
