@@ -12,7 +12,7 @@
  * Baud rate and default timeout
  */
 #define DEFAULT_BAUD_RATE 9600
-#define DEFAULT_TIMEOUT 2000
+#define DEFAULT_TIMEOUT 5000
 #define DEFAULT_CLOSETIMEOUT 100
 
 /*
@@ -65,6 +65,7 @@
 #define R_IO_O 0x99
 #define R_IO_I 0x9B
 #define R_TM_O 0x9C
+#define R_UP_O 0x9D
 #define R_INIT 0xA1
 
 #define R_IO_CE 0xA3
@@ -177,6 +178,7 @@ struct ch9344 {
 	bool modeline9;
 	struct ch9344_ttyport ttyport[MAXPORT]; /* our tty port data */
 	enum CHIPTYPE chiptype;
+	u8 chipver;
 	int port_offset;
 
 	__le16 idVendor;
