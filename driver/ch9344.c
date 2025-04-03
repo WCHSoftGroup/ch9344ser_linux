@@ -3,7 +3,7 @@
  * USB serial driver for USB to Quad UARTs chip ch9344 and
  * USB to Octal UARTs chip ch348.
  *
- * Copyright (C) 2024 Nanjing Qinheng Microelectronics Co., Ltd.
+ * Copyright (C) 2025 Nanjing Qinheng Microelectronics Co., Ltd.
  * Web: http://wch.cn
  * Author: WCH <tech@wch.cn>
  *
@@ -34,6 +34,7 @@
  *      - add support for kernel version beyond 6.5.x
  *      - add support for ch9344q
  *      - update modem status when uart open
+ * V2.2 - add support for independent upload on multiple serial ports
  */
 
 #define DEBUG
@@ -72,7 +73,7 @@
 
 #define DRIVER_AUTHOR "WCH"
 #define DRIVER_DESC "USB serial driver for ch9344/ch348."
-#define VERSION_DESC "V2.1 On 2024.10"
+#define VERSION_DESC "V2.2 On 2025.01"
 
 #define IOCTL_MAGIC 'W'
 #define IOCTL_CMD_GPIOENABLE _IOW(IOCTL_MAGIC, 0x80, u16)
@@ -115,7 +116,7 @@ static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum,
 
 static int ch9344_cmd_out(struct ch9344 *ch9344, u8 *buf, int count);
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0))
 
 /*
  * Look up an ch9344 structure by minor. If found and not disconnected,
@@ -432,6 +433,7 @@ static inline int ch9344_enum_chiptype(struct ch9344 *ch9344)
 			else
 				ch9344->chiptype = CHIP_CH348L;
 		}
+		ch9344->chipver = buffer[0];
 	} else
 		retval = -EPROTO;
 
@@ -945,6 +947,9 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 	int portnum;
 	u8 usblen;
 	int left = 0, right = 0;
+#ifndef PACKLOAD
+	bool upflag[MAXPORT];
+#endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0))
 	struct tty_struct *tty;
 #endif
@@ -979,21 +984,19 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 		if (ch9344->ttyport[portnum].isopen) {
 #ifndef PACKLOAD
 			ch9344->ttyport[portnum].iocount.rx += usblen;
+			upflag[portnum] = true;
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0))
 			tty = tty_port_tty_get(
 				&ch9344->ttyport[portnum].port);
 			if (tty) {
 				tty_insert_flip_string(tty, buffer + i + 2,
 						       usblen);
-				tty_flip_buffer_push(tty);
 				tty_kref_put(tty);
 			}
 #else
 			tty_insert_flip_string(
 				&ch9344->ttyport[portnum].port,
 				buffer + i + 2, usblen);
-			tty_flip_buffer_push(
-				&ch9344->ttyport[portnum].port);
 #endif
 #else
 			kfifo_in(&ch9344->ttyport[portnum].rfifo,
@@ -1005,6 +1008,21 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 #endif
 		}
 	}
+#ifndef PACKLOAD
+	for (i = 0; i < ch9344->num_ports; i++) {
+		if (upflag[i]) {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0))
+			tty = tty_port_tty_get(&ch9344->ttyport[i].port);
+			if (tty) {
+				tty_flip_buffer_push(tty);
+				tty_kref_put(tty);
+			}
+#else
+			tty_flip_buffer_push(&ch9344->ttyport[i].port);
+#endif
+		}
+	}
+#endif
 }
 
 static void ch9344_read_bulk_callback(struct urb *urb)
@@ -2165,12 +2183,20 @@ static void cal_outdata(char *buffer, u8 rol, u8 xor)
 
 static u8 cal_recv_tmt(__le32 bd)
 {
+	u8 tmt;
 	int dly = 1000000 * 15 / bd;
 
 	if (bd >= 921600)
 		return 5;
 
-	return (dly / 100 + 1);
+	tmt = dly / 100 + 1;
+
+#ifdef PACKLOAD
+	if (bd < 9600)
+		tmt /= 2;
+#endif
+
+	return tmt;
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0))
@@ -2201,6 +2227,7 @@ static void ch9344_tty_set_termios(struct tty_struct *tty,
 	char *buffer;
 	u8 xor, rol;
 	u8 rbytes[2];
+	int dly;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
 	if (termios_old &&
@@ -2396,11 +2423,9 @@ static void ch9344_tty_set_termios(struct tty_struct *tty,
 			goto out;
 	}
 
+	dly = 1000000 * 30 / newline.dwDTERate / 1000 + 1;
 	ch9344->ttyport[portnum].interval =
-		100 * HZ / newline.dwDTERate > 0 ?
-			100 * HZ / newline.dwDTERate :
-			2;
-
+		dly * HZ / 1000 > 0 ? dly * HZ / 1000 : 2;
 	ch9344->ttyport[portnum].timer.expires =
 		jiffies + ch9344->ttyport[portnum].interval;
 
@@ -2858,6 +2883,8 @@ static int ch9344_probe(struct usb_interface *intf,
 	int portnum = 0;
 	int cmdsize, readsize;
 	u8 *buf;
+	bool bpackload;
+	char *buffer;
 	unsigned long quirks;
 	int num_rx_buf = CH9344_NR;
 	int i, index;
@@ -2938,6 +2965,32 @@ static int ch9344_probe(struct usb_interface *intf,
 			goto enum_fail;
 		portnum = ch9344->num_ports = 8;
 		ch9344->port_offset = 0;
+	}
+
+	buffer = kzalloc(ch9344->cmdsize, GFP_KERNEL);
+	if (buffer == NULL)
+		goto enum_fail;
+
+	/* uart upload mode */
+	if (ch9344->chiptype == CHIP_CH348L ||
+	    ch9344->chiptype == CHIP_CH348Q) {
+		if (ch9344->chipver >= 0x8a) {
+			bpackload = true;
+		}
+	} else if ((ch9344->chiptype == CHIP_CH9344Q) ||
+		   (ch9344->chiptype == CHIP_CH9344L &&
+		    ch9344->chipver >= 0x39)) {
+		bpackload = true;
+	}
+
+	if (bpackload) {
+		memset(buffer, 0x00, ch9344->cmdsize);
+		buffer[0] = CMD_WB_E + 0x00 + ch9344->port_offset;
+		buffer[1] = R_UP_O;
+		buffer[2] = 0x01;
+		rv = ch9344_cmd_out(ch9344, buffer, 0x08);
+		if (rv < 0)
+			goto cmd_fail;
 	}
 
 	ch9344->opencounts = ch9344->num_ports;
@@ -3084,6 +3137,7 @@ static int ch9344_probe(struct usb_interface *intf,
 		 "ttyCH9344USB from %d - %d: ch9344 device attached.\n",
 		 NUMSTEP * minor, NUMSTEP * minor + portnum - 1);
 
+	kfree(buffer);
 	return 0;
 
 error_submit_read_urbs:
@@ -3107,11 +3161,13 @@ alloc_fail5:
 alloc_fail4:
 	usb_free_coherent(usb_dev, cmdsize, ch9344->cmdread_buffer,
 			  ch9344->cmdread_dma);
-enum_fail:
 alloc_fail2:
+enum_fail:
+cmd_fail:
 	ch9344_release_minor(ch9344);
 	kfree(ch9344);
 alloc_fail:
+	kfree(buffer);
 	return rv;
 }
 
