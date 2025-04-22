@@ -71,6 +71,7 @@
 #define R_IO_CE 0xA3
 #define R_IO_CD 0xA4
 #define R_IO_CO 0xA5
+#define R_IO_COS 0xA6
 #define R_IO_CI 0xA7
 #define R_IO_RE 0xAA
 #define R_IO_RD 0xAB
