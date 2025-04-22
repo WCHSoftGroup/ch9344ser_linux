@@ -73,7 +73,7 @@
 
 #define DRIVER_AUTHOR "WCH"
 #define DRIVER_DESC "USB serial driver for ch9344/ch348."
-#define VERSION_DESC "V2.2 On 2025.01"
+#define VERSION_DESC "V2.2 On 2025.04"
 
 #define IOCTL_MAGIC 'W'
 #define IOCTL_CMD_GPIOENABLE _IOW(IOCTL_MAGIC, 0x80, u16)
@@ -304,6 +304,8 @@ static int ch9344_cmd_in(struct ch9344 *ch9344, void *sbuf, int count,
 	if (!buffer)
 		return -ENOMEM;
 
+	ch9344->cfg_recv = false;
+
 	ret = copy_from_user(buffer, (char __user *)sbuf, count);
 	if (ret)
 		goto out;
@@ -331,8 +333,6 @@ static int ch9344_cmd_in(struct ch9344 *ch9344, void *sbuf, int count,
 		ret = -EFAULT;
 		goto out;
 	}
-
-	ch9344->cfg_recv = false;
 
 out:
 	kfree(buffer);
@@ -1652,31 +1652,20 @@ static int ch348_set_gpioval(struct ch9344 *ch9344, u8 gpionumber,
 	int ret;
 	u8 request;
 	u8 rgadd;
-	u64 gpiovals = ch9344->gpiovals;
 
 	buffer = kzalloc(ch9344->cmdsize, GFP_KERNEL);
 	if (!buffer)
 		return -ENOMEM;
 
 	request = R_MOD;
-	rgadd = R_IO_CO;
+	rgadd = R_IO_COS;
 	buffer[0] = request;
 	buffer[1] = rgadd;
-	if (gpioval)
-		gpiovals |= (u64)1 << gpionumber;
-	else
-		gpiovals &= ~((u64)1 << gpionumber);
-	buffer[4] = gpiovals >> 40;
-	buffer[5] = gpiovals >> 32;
-	buffer[6] = gpiovals >> 24;
-	buffer[7] = gpiovals >> 16;
-	buffer[8] = gpiovals >> 8;
-	buffer[9] = gpiovals;
+	buffer[2] = gpionumber;
+	buffer[3] = gpioval;
 
-	ret = ch9344_cmd_out(ch9344, buffer, 0x0a);
+	ret = ch9344_cmd_out(ch9344, buffer, 0x04);
 	kfree(buffer);
-	if (ret == 0)
-		ch9344->gpiovals = gpiovals;
 
 	return ret < 0 ? ret : 0;
 }
@@ -1691,6 +1680,8 @@ static int ch348_get_gpioval(struct ch9344 *ch9344)
 	buffer = kzalloc(ch9344->cmdsize, GFP_KERNEL);
 	if (!buffer)
 		return -ENOMEM;
+
+	ch9344->gpio_recv = false;
 
 	request = R_MOD;
 	rgadd = R_IO_CI;
@@ -1712,8 +1703,6 @@ static int ch348_get_gpioval(struct ch9344 *ch9344)
 	if (ret < 0) {
 		return ret;
 	}
-
-	ch9344->gpio_recv = false;
 
 out:
 	return ret < 0 ? ret : 0;
@@ -1861,6 +1850,8 @@ static int ch9344_get_gpioval(struct ch9344 *ch9344, int portnum)
 	if (!buffer)
 		return -ENOMEM;
 
+	ch9344->gpio_recv = false;
+
 	for (i = 0; i < MAXGPIO; i++) {
 		gpiodirs |= (ch9344->gpiodir[i]) << i;
 	}
@@ -1886,8 +1877,6 @@ static int ch9344_get_gpioval(struct ch9344 *ch9344, int portnum)
 	if (ret < 0) {
 		return ret;
 	}
-
-	ch9344->gpio_recv = false;
 
 out:
 	return ret < 0 ? ret : 0;
@@ -2102,6 +2091,9 @@ static int ch9344_tty_ioctl(struct tty_struct *tty, unsigned int cmd,
 		rv = ch9344_control_in(ch9344, (u8)arg1, (u8)arg2,
 				       (u16)arg3, (u16)arg4,
 				       (u8 __user *)buffer, (u16)arg5);
+		rv = copy_to_user((u8 __user *)arg6, buffer, arg5);
+		if (rv)
+			goto out;
 		break;
 	case IOCTL_CMD_CTRLOUT:
 		get_user(arg1, (u8 __user *)arg);
