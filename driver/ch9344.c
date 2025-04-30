@@ -35,6 +35,9 @@
  *      - add support for ch9344q
  *      - update modem status when uart open
  * V2.2 - add support for independent upload on multiple serial ports
+ * V2.3 - set default termios baudrate to B115200
+ *      - fix issue of automatically sending data upon opening tty
+ *        for the first time on some systems
  */
 
 #define DEBUG
@@ -73,7 +76,7 @@
 
 #define DRIVER_AUTHOR "WCH"
 #define DRIVER_DESC "USB serial driver for ch9344/ch348."
-#define VERSION_DESC "V2.2 On 2025.04"
+#define VERSION_DESC "V2.3 On 2025.04"
 
 #define IOCTL_MAGIC 'W'
 #define IOCTL_CMD_GPIOENABLE _IOW(IOCTL_MAGIC, 0x80, u16)
@@ -1124,6 +1127,9 @@ static int ch9344_tty_open(struct tty_struct *tty, struct file *filp)
 {
 	struct ch9344 *ch9344 = tty->driver_data;
 	int rv;
+
+	if (tty)
+		ch9344_tty_set_termios(tty, NULL);
 
 	rv = tty_port_open(
 		&ch9344->ttyport[ch9344_get_portnum(tty->index)].port, tty,
@@ -3419,8 +3425,12 @@ static int __init ch9344_init(void)
 				   TTY_DRIVER_DYNAMIC_DEV;
 #endif
 	ch9344_tty_driver->init_termios = tty_std_termios;
-	ch9344_tty_driver->init_termios.c_cflag = B50 | CS8 | CREAD |
+	ch9344_tty_driver->init_termios.c_cflag = B115200 | CS8 | CREAD |
 						  HUPCL | CLOCAL;
+	ch9344_tty_driver->init_termios.c_lflag &=
+		~(ECHO | ECHONL | ICANON | ISIG);
+	ch9344_tty_driver->init_termios.c_oflag &= ~OPOST;
+
 	tty_set_operations(ch9344_tty_driver, &ch9344_ops);
 
 	retval = tty_register_driver(ch9344_tty_driver);
