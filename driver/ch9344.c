@@ -66,7 +66,11 @@
 #include <linux/timer.h>
 #include <linux/kfifo.h>
 #include <asm/byteorder.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0))
+#include <linux/unaligned.h>
+#else
 #include <asm/unaligned.h>
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
 #include <linux/sched/signal.h>
@@ -76,7 +80,7 @@
 
 #define DRIVER_AUTHOR "WCH"
 #define DRIVER_DESC "USB serial driver for ch9344/ch348."
-#define VERSION_DESC "V2.3 On 2025.04"
+#define VERSION_DESC "V2.3 On 2025.07"
 
 #define IOCTL_MAGIC 'W'
 #define IOCTL_CMD_GPIOENABLE _IOW(IOCTL_MAGIC, 0x80, u16)
@@ -623,8 +627,7 @@ static void ch9344_cmd_irq(struct urb *urb)
 			if (reg_iir == R_INIT) {
 				i += 12;
 				continue;
-			}
-			if (reg_iir >= R_MOD && reg_iir <= R_TM_O) {
+			} else if (reg_iir >= R_MOD && reg_iir <= R_TM_O) {
 				if ((portnum >= left) &&
 				    (portnum < right)) {
 					portnum -= ch9344->port_offset;
@@ -790,6 +793,11 @@ static void ch9344_cmd_irq(struct urb *urb)
 								 .wmodemioctl);
 				} else
 					break;
+				if (reg_iir == VEN_R)
+					i += 4;
+				else
+					i += 3;
+				continue;
 			} else if ((reg_iir & 0x0f) == R_II_B1) {
 				if ((portnum >= left) &&
 				    (portnum < right)) {
@@ -820,6 +828,8 @@ static void ch9344_cmd_irq(struct urb *urb)
 					spin_unlock(&ch9344->read_lock);
 				} else
 					break;
+				i += 3;
+				continue;
 			} else if (reg_iir == R_EE_CFG) {
 				if (*(data + i) == CMD_W_R) {
 					spin_lock_irqsave(
@@ -842,10 +852,14 @@ static void ch9344_cmd_irq(struct urb *urb)
 					break;
 				i += 4;
 				continue;
+			} else if (reg_iir == R_UP_O) {
+				i += 4;
+				continue;
 			} else {
 				dev_dbg(&ch9344->data->dev,
 					"%s - wrong status received",
 					__func__);
+				break;
 			}
 			i += 3;
 		}
@@ -910,6 +924,7 @@ static int ch9344_submit_read_urbs(struct ch9344 *ch9344, gfp_t mem_flags)
 	return 0;
 }
 
+#ifdef PACKLOAD
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0))
 static void timer_function(unsigned long arg)
 {
@@ -940,6 +955,7 @@ static void timer_function(struct timer_list *t)
 	tty_flip_buffer_push(&ttyport->port);
 	kfree(buffer);
 }
+#endif
 #endif
 
 static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
@@ -1128,9 +1144,6 @@ static int ch9344_tty_open(struct tty_struct *tty, struct file *filp)
 	struct ch9344 *ch9344 = tty->driver_data;
 	int rv;
 
-	if (tty)
-		ch9344_tty_set_termios(tty, NULL);
-
 	rv = tty_port_open(
 		&ch9344->ttyport[ch9344_get_portnum(tty->index)].port, tty,
 		filp);
@@ -1203,8 +1216,8 @@ static int ch9344_port_activate(struct tty_port *port,
 	if (retval)
 		goto error_configure;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
 	ch9344_tty_set_termios(tty, NULL);
+#ifdef PACKLOAD
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0))
 	init_timer(&ttyport->timer);
 	ttyport->timer.data = (unsigned long)ttyport;
@@ -1251,7 +1264,9 @@ static void ch9344_port_shutdown(struct tty_port *port)
 	struct ch9344 *ch9344 = tty_get_portdata(ttyport);
 	int portnum = ttyport->portnum;
 
+#ifdef PACKLOAD
 	del_timer(&ttyport->timer);
+#endif
 	ch9344_set_control(ch9344, portnum, 0x00);
 	ch9344_set_control(ch9344, portnum, 0x10);
 	ttyport->isopen = false;
@@ -1389,6 +1404,9 @@ transmit:
 		if (timeout <= 0) {
 			wb->use = 0;
 			ch9344->ttyport[portnum].write_empty = true;
+			dev_err(&ch9344->data->dev,
+				"%s - write timeout\n",
+				__func__);
 			return sendlen ? sendlen : -ETIMEDOUT;
 		}
 		spin_lock_irqsave(&ch9344->write_lock, flags);
@@ -1526,7 +1544,7 @@ static int ch9344_tty_tiocmset(struct tty_struct *tty, unsigned int set,
 	unsigned int xorval;
 
 	if ((ch9344->chiptype == CHIP_CH348Q) && (portnum > 3))
-		return -EINVAL;
+		return 0;
 
 	newctrl = ch9344->ttyport[portnum].ctrlout;
 	set = (set & TIOCM_DTR ? CH9344_CTO_D : 0) |
@@ -1739,18 +1757,14 @@ static int ch9344_set_uartmode(struct ch9344 *ch9344, int portnum,
 	if (!buffer)
 		return -ENOMEM;
 
-	if ((ch9344->ttyport[portnum].uartmode == M_NOR) &&
-	    (mode == M_HF)) {
+	if (mode == M_HF) {
 		buffer[0] = CMD_W_BR;
 		buffer[1] = rgadd + R_C4;
 		buffer[2] = 0x51;
 		ret = ch9344_cmd_out(ch9344, buffer, 0x03);
 		if (ret < 0)
 			goto out;
-	}
-
-	if ((ch9344->ttyport[portnum].uartmode == M_HF) &&
-	    (mode == M_NOR)) {
+	} else if (mode == M_NOR) {
 		buffer[0] = CMD_W_BR;
 		buffer[1] = rgadd + R_C4;
 		buffer[2] = 0x50;
@@ -2225,7 +2239,9 @@ static void ch9344_tty_set_termios(struct tty_struct *tty,
 	char *buffer;
 	u8 xor, rol;
 	u8 rbytes[2];
+#ifdef PACKLOAD
 	int dly;
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
 	if (termios_old &&
@@ -2421,11 +2437,13 @@ static void ch9344_tty_set_termios(struct tty_struct *tty,
 			goto out;
 	}
 
+#ifdef PACKLOAD
 	dly = 1000000 * 30 / newline.dwDTERate / 1000 + 1;
 	ch9344->ttyport[portnum].interval =
 		dly * HZ / 1000 > 0 ? dly * HZ / 1000 : 2;
 	ch9344->ttyport[portnum].timer.expires =
 		jiffies + ch9344->ttyport[portnum].interval;
+#endif
 
 	if (ch9344->chiptype == CHIP_CH9344L ||
 	    ch9344->chiptype == CHIP_CH9344Q)
@@ -3097,6 +3115,8 @@ static int ch9344_probe(struct usb_interface *intf,
 		tty_register_device(ch9344_tty_driver, NUMSTEP * minor + i,
 				    &data_interface->dev);
 #endif
+
+#ifdef PACKLOAD
 		rv = kfifo_alloc(&ch9344->ttyport[i].rfifo, FIFOSIZE,
 				 GFP_KERNEL);
 		if (rv) {
@@ -3104,6 +3124,7 @@ static int ch9344_probe(struct usb_interface *intf,
 				"%s - kfifo_alloc failed\n", __func__);
 			goto alloc_fail7;
 		}
+#endif
 	}
 
 	/* deal with urb when usb plugged in */
@@ -3139,6 +3160,10 @@ static int ch9344_probe(struct usb_interface *intf,
 	return 0;
 
 error_submit_read_urbs:
+#ifdef PACKLOAD
+	for (i = 0; i < portnum; i++)
+		kfifo_free(&ch9344->ttyport[i].rfifo);
+#endif
 	for (i = 0; i < ch9344->rx_buflimit; i++)
 		usb_kill_urb(ch9344->read_urbs[i]);
 error_submit_urb:
@@ -3160,12 +3185,12 @@ alloc_fail4:
 	usb_free_coherent(usb_dev, cmdsize, ch9344->cmdread_buffer,
 			  ch9344->cmdread_dma);
 alloc_fail2:
-enum_fail:
 cmd_fail:
+	kfree(buffer);
+enum_fail:
 	ch9344_release_minor(ch9344);
 	kfree(ch9344);
 alloc_fail:
-	kfree(buffer);
 	return rv;
 }
 
@@ -3231,6 +3256,11 @@ static void ch9344_disconnect(struct usb_interface *intf)
 		}
 	}
 	stop_data_traffic(ch9344);
+
+#ifdef PACKLOAD
+	for (i = 0; i < num_ports; i++)
+		kfifo_free(&ch9344->ttyport[i].rfifo);
+#endif
 
 	for (i = 0; i < num_ports; i++) {
 		tty_unregister_device(ch9344_tty_driver,
