@@ -944,7 +944,11 @@ static void timer_function(unsigned long arg)
 static void timer_function(struct timer_list *t)
 {
 	unsigned char *buffer;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 16, 0))
 	struct ch9344_ttyport *ttyport = from_timer(ttyport, t, timer);
+#else
+	struct ch9344_ttyport *ttyport = timer_container_of(ttyport, t, timer);
+#endif
 	int fifolen = kfifo_len(&ttyport->rfifo);
 	int len;
 
