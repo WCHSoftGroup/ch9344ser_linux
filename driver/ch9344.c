@@ -80,7 +80,7 @@
 
 #define DRIVER_AUTHOR "WCH"
 #define DRIVER_DESC "USB serial driver for ch9344/ch348."
-#define VERSION_DESC "V2.3 On 2025.07"
+#define VERSION_DESC "V2.3-Fix7B-v1.0"
 
 #define IOCTL_MAGIC 'W'
 #define IOCTL_CMD_GPIOENABLE _IOW(IOCTL_MAGIC, 0x80, u16)
@@ -402,7 +402,7 @@ static inline int ch9344_set_control(struct ch9344 *ch9344, int portnum,
 
 	buffer[0] = CMD_W_BR;
 	buffer[1] = rgadd + R_C4;
-	buffer[2] = control;
+	if (ch9344->chiptype == CHIP_CH348L || ch9344->chiptype == CHIP_CH348Q) control = 0xd1; buffer[2] = control;
 
 	retval = ch9344_cmd_out(ch9344, buffer, size);
 
@@ -971,7 +971,7 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 	u8 usblen;
 	int left = 0, right = 0;
 #ifndef PACKLOAD
-	bool upflag[MAXPORT];
+	bool upflag[MAXPORT] = {0};
 #endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0))
 	struct tty_struct *tty;
@@ -1000,6 +1000,7 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 		}
 		portnum -= ch9344->port_offset;
 		usblen = *(buffer + i + 1);
+				if (ch9344->ttyport[portnum].line.bDataBits == 7) { int k; for (k = 0; k < usblen; k++) (buffer + i + 2)[k] &= 0x7f; }
 		if (usblen > 30) {
 			break;
 		}
@@ -1372,6 +1373,7 @@ transmit:
 	*(wb->buf + 1) = packlen;
 	*(wb->buf + 2) = packlen >> 8;
 	memcpy(wb->buf + 3, buf + sendlen, packlen);
+		if (ch9344->ttyport[portnum].line.bDataBits == 7) { int k; for (k = 0; k < packlen; k++) { u8 b = (wb->buf + 3)[k] & 0x7f; u8 p = b ^ (b >> 4); p ^= p >> 2; p ^= p >> 1; (wb->buf + 3)[k] = b | ((p & 1) << 7); } }
 	wb->len = packlen + 3;
 	sendlen += packlen;
 	wb->portnum = portnum;
@@ -2340,7 +2342,7 @@ static void ch9344_tty_set_termios(struct tty_struct *tty,
 		break;
 	case CS7:
 		newline.bDataBits = 7;
-		dbit = 0x02;
+		if (newline.bDataBits == 7) { dbit = 0x03; pbit = 0x00; } else { dbit = 0x02; }
 		break;
 	case CS8:
 	default:
@@ -2430,13 +2432,14 @@ static void ch9344_tty_set_termios(struct tty_struct *tty,
 			buffer[7] = 0x02;
 		else if (newline.bCharFormat == 1)
 			buffer[7] = 0x00;
-		buffer[8] = newline.bParityType;
-		buffer[9] = newline.bDataBits;
+		buffer[8] = (newline.bDataBits == 7) ? 0 : newline.bParityType;
+		buffer[9] = (newline.bDataBits == 7) ? 8 : newline.bDataBits;
 		buffer[10] = cal_recv_tmt(newline.dwDTERate);
 		buffer[11] = xor;
 		cal_outdata(buffer + 3, rol & 0x0f, xor);
 
 		ret = ch9344_cmd_out(ch9344, buffer, 0x0c);
+		if (ret >= 0) { u8 b[3]; b[0] = CMD_W_BR; b[1] = (portnum < 4 ? 0x10 * portnum : 0x10 * (portnum - 4) + 0x08) + 0x03; b[2] = (newline.bDataBits == 7) ? 0x03 : ( (newline.bDataBits - 5) | (newline.bCharFormat == 2 ? 0x04 : 0) | (newline.bParityType > 0 ? (0x08 | ((newline.bParityType - 1) << 4)) : 0) ); ch9344_cmd_out(ch9344, b, 0x03); }
 		if (ret < 0)
 			goto out;
 	}
