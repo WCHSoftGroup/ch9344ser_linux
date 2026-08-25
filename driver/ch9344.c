@@ -1378,6 +1378,9 @@ transmit:
 
 	stat = usb_autopm_get_interface_async(ch9344->data);
 	if (stat) {
+		dev_err(&ch9344->data->dev,
+			"%s - autopm get failed on port %d: %d\n",
+			__func__, portnum, stat);
 		wb->use = 0;
 		spin_unlock_irqrestore(&ch9344->write_lock, flags);
 		return stat;
@@ -1406,8 +1409,11 @@ transmit:
 			ch9344->ttyport[portnum].write_empty,
 			msecs_to_jiffies(DEFAULT_TIMEOUT));
 		if (timeout <= 0) {
+			spin_lock_irqsave(&ch9344->write_lock, flags);
 			wb->use = 0;
 			ch9344->ttyport[portnum].write_empty = true;
+			usb_autopm_put_interface_async(ch9344->data);
+			spin_unlock_irqrestore(&ch9344->write_lock, flags);
 			dev_err(&ch9344->data->dev,
 				"%s - write timeout\n",
 				__func__);
