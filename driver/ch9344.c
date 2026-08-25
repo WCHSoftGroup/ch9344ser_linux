@@ -867,6 +867,8 @@ static void ch9344_cmd_irq(struct urb *urb)
 	case -ECONNRESET:
 	case -ENOENT:
 	case -ESHUTDOWN:
+	case -ENODEV:
+	case -EPIPE:
 		/* this urb is terminated, clean up */
 		dev_dbg(&ch9344->data->dev,
 			"%s - urb shutting down with status: %d\n",
@@ -876,13 +878,16 @@ static void ch9344_cmd_irq(struct urb *urb)
 		dev_dbg(&ch9344->data->dev,
 			"%s - nonzero urb status received: %d\n", __func__,
 			status);
-		return;
+		break;
 	}
+
+	if (ch9344->disconnected)
+		return;
 
 	usb_mark_last_busy(ch9344->dev);
 
 	retval = usb_submit_urb(urb, GFP_ATOMIC);
-	if (retval && retval != -EPERM)
+	if (retval && retval != -EPERM && retval != -ENODEV)
 		dev_err(&ch9344->data->dev,
 			"%s - usb_submit_urb failed: %d\n", __func__,
 			retval);
@@ -1053,24 +1058,37 @@ static void ch9344_read_bulk_callback(struct urb *urb)
 	struct ch9344_rb *rb = urb->context;
 	struct ch9344 *ch9344 = rb->instance;
 	int status = urb->status;
+	bool stopped = false;
 
-	if (!ch9344->dev) {
+	if (!ch9344->dev || ch9344->disconnected) {
 		set_bit(rb->index, &ch9344->read_urbs_free);
 		return;
 	}
 
-	if (status) {
-		set_bit(rb->index, &ch9344->read_urbs_free);
+	switch (status) {
+	case 0:
+		usb_mark_last_busy(ch9344->dev);
+		ch9344_process_read_urb(ch9344, urb);
+		break;
+	case -ENOENT:
+	case -ECONNRESET:
+	case -ESHUTDOWN:
+	case -ENODEV:
+	case -EPIPE:
 		dev_dbg(&ch9344->data->dev,
-			"%s - non-zero urb status: %d\n", __func__,
+			"%s - urb stopped: %d\n", __func__, status);
+		stopped = true;
+		break;
+	default:
+		dev_dbg(&ch9344->data->dev,
+			"%s - transient urb status: %d\n", __func__,
 			status);
-		return;
+		break;
 	}
 
-	usb_mark_last_busy(ch9344->dev);
-	ch9344_process_read_urb(ch9344, urb);
 	set_bit(rb->index, &ch9344->read_urbs_free);
-	ch9344_submit_read_urb(ch9344, rb->index, GFP_ATOMIC);
+	if (!stopped && !ch9344->disconnected)
+		ch9344_submit_read_urb(ch9344, rb->index, GFP_ATOMIC);
 }
 
 /* data interface wrote those outgoing bytes */
