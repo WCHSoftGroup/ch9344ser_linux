@@ -976,7 +976,7 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 	u8 usblen;
 	int left = 0, right = 0;
 #ifndef PACKLOAD
-	bool upflag[MAXPORT];
+	bool upflag[MAXPORT] = { false };
 #endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0))
 	struct tty_struct *tty;
@@ -995,19 +995,23 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 	if (!urb->actual_length)
 		return;
 	size = urb->actual_length;
+	if (size > (int)sizeof(buffer)) {
+		dev_dbg(&ch9344->data->dev,
+			"%s - oversized frame: %d\n", __func__, size);
+		return;
+	}
 
-	memcpy(buffer, urb->transfer_buffer, urb->actual_length);
+	memcpy(buffer, urb->transfer_buffer, size);
 
-	for (i = 0; i < size; i += 32) {
+	for (i = 0; i + 2 <= size; i += 32) {
 		portnum = *(buffer + i);
 		if (portnum < left || portnum >= right) {
 			break;
 		}
 		portnum -= ch9344->port_offset;
 		usblen = *(buffer + i + 1);
-		if (usblen > 30) {
+		if (usblen > 30 || i + 2 + usblen > size)
 			break;
-		}
 
 		if (ch9344->ttyport[portnum].isopen) {
 #ifndef PACKLOAD
