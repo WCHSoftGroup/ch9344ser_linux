@@ -893,7 +893,7 @@ static void ch9344_cmd_irq(struct urb *urb)
 		break;
 	}
 
-	if (ch9344->disconnected)
+	if (READ_ONCE(ch9344->disconnected))
 		return;
 
 	usb_mark_last_busy(ch9344->dev);
@@ -1076,7 +1076,7 @@ static void ch9344_read_bulk_callback(struct urb *urb)
 	int status = urb->status;
 	bool stopped = false;
 
-	if (!ch9344->dev || ch9344->disconnected) {
+	if (!ch9344->dev || READ_ONCE(ch9344->disconnected)) {
 		set_bit(rb->index, &ch9344->read_urbs_free);
 		return;
 	}
@@ -1103,7 +1103,7 @@ static void ch9344_read_bulk_callback(struct urb *urb)
 	}
 
 	set_bit(rb->index, &ch9344->read_urbs_free);
-	if (!stopped && !ch9344->disconnected)
+	if (!stopped && !READ_ONCE(ch9344->disconnected))
 		ch9344_submit_read_urb(ch9344, rb->index, GFP_ATOMIC);
 }
 
@@ -3284,7 +3284,7 @@ static void ch9344_disconnect(struct usb_interface *intf)
 	usb_deregister_dev(intf, &ch9344_class);
 
 	mutex_lock(&ch9344->mutex);
-	ch9344->disconnected = true;
+	WRITE_ONCE(ch9344->disconnected, true);
 	wake_up_interruptible(&ch9344->wcfgioctl);
 	wake_up_interruptible(&ch9344->wgpioioctl);
 	usb_set_intfdata(ch9344->data, NULL);
