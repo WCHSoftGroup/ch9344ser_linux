@@ -1357,7 +1357,7 @@ static int ch9344_tty_write(struct tty_struct *tty,
 	int portnum = ch9344_get_portnum(tty->index);
 	int timeout;
 	int maxep = ch9344->writesize / 20;
-	int packnum, maxpacknum;
+	int maxpacknum;
 	int packlen, total_len, sendlen;
 
 	if (!count)
@@ -1373,11 +1373,6 @@ static int ch9344_tty_write(struct tty_struct *tty,
 			count;
 	total_len = count;
 	sendlen = 0;
-
-	if (count % (maxep - 3))
-		packnum = count / (maxep - 3) + 1;
-	else
-		packnum = count / (maxep - 3);
 
 transmit:
 	spin_lock_irqsave(&ch9344->write_lock, flags);
