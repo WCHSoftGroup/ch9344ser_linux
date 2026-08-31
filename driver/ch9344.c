@@ -609,7 +609,7 @@ static void ch9344_cmd_irq(struct urb *urb)
 	switch (status) {
 	case 0:
 		/* success */
-		for (i = 0; i < len;) {
+		for (i = 0; i + 3 <= len;) {
 			reg_iir = *(data + i + 1);
 			portnum = *(data + i) & 0x0f;
 
@@ -625,9 +625,13 @@ static void ch9344_cmd_irq(struct urb *urb)
 			}
 
 			if (reg_iir == R_INIT) {
+				if (i + 12 > len)
+					break;
 				i += 12;
 				continue;
 			} else if (reg_iir >= R_MOD && reg_iir <= R_TM_O) {
+				if (i + 4 > len)
+					break;
 				if ((portnum >= left) &&
 				    (portnum < right)) {
 					portnum -= ch9344->port_offset;
@@ -653,11 +657,13 @@ static void ch9344_cmd_irq(struct urb *urb)
 			} else if (reg_iir >= R_IO_CE &&
 				   reg_iir <= R_IO_CI) {
 				if (reg_iir == R_IO_CI) {
+					if (i + 10 > len)
+						break;
 					spin_lock_irqsave(
 						&ch9344->write_lock,
 						flags);
 					ch9344->gpio_recv = true;
-					memcpy(&gpiovalins, data + 2,
+					memcpy(&gpiovalins, data + i + 2,
 					       0x08);
 					ch9344->gpiovalins =
 						le64_to_cpu(gpiovalins);
@@ -690,6 +696,8 @@ static void ch9344_cmd_irq(struct urb *urb)
 			} else if (((reg_iir & 0x0f) == R_II_B3) ||
 				   ((reg_iir == VEN_R) &&
 				    (*(data + i + 2) == (rgadd | 0x06)))) {
+				if (reg_iir == VEN_R && i + 4 > len)
+					break;
 				if ((portnum >= left) &&
 				    (portnum < right)) {
 					portnum -= ch9344->port_offset;
@@ -831,6 +839,8 @@ static void ch9344_cmd_irq(struct urb *urb)
 				i += 3;
 				continue;
 			} else if (reg_iir == R_EE_CFG) {
+				if (i + 4 > len)
+					break;
 				if (*(data + i) == CMD_W_R) {
 					spin_lock_irqsave(
 						&ch9344->write_lock,
@@ -853,6 +863,8 @@ static void ch9344_cmd_irq(struct urb *urb)
 				i += 4;
 				continue;
 			} else if (reg_iir == R_UP_O) {
+				if (i + 4 > len)
+					break;
 				i += 4;
 				continue;
 			} else {
@@ -867,6 +879,8 @@ static void ch9344_cmd_irq(struct urb *urb)
 	case -ECONNRESET:
 	case -ENOENT:
 	case -ESHUTDOWN:
+	case -ENODEV:
+	case -EPIPE:
 		/* this urb is terminated, clean up */
 		dev_dbg(&ch9344->data->dev,
 			"%s - urb shutting down with status: %d\n",
@@ -876,13 +890,16 @@ static void ch9344_cmd_irq(struct urb *urb)
 		dev_dbg(&ch9344->data->dev,
 			"%s - nonzero urb status received: %d\n", __func__,
 			status);
-		return;
+		break;
 	}
+
+	if (READ_ONCE(ch9344->disconnected))
+		return;
 
 	usb_mark_last_busy(ch9344->dev);
 
 	retval = usb_submit_urb(urb, GFP_ATOMIC);
-	if (retval && retval != -EPERM)
+	if (retval && retval != -EPERM && retval != -ENODEV)
 		dev_err(&ch9344->data->dev,
 			"%s - usb_submit_urb failed: %d\n", __func__,
 			retval);
@@ -971,7 +988,7 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 	u8 usblen;
 	int left = 0, right = 0;
 #ifndef PACKLOAD
-	bool upflag[MAXPORT];
+	bool upflag[MAXPORT] = { false };
 #endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0))
 	struct tty_struct *tty;
@@ -990,19 +1007,23 @@ static void ch9344_process_read_urb(struct ch9344 *ch9344, struct urb *urb)
 	if (!urb->actual_length)
 		return;
 	size = urb->actual_length;
+	if (size > (int)sizeof(buffer)) {
+		dev_dbg(&ch9344->data->dev,
+			"%s - oversized frame: %d\n", __func__, size);
+		return;
+	}
 
-	memcpy(buffer, urb->transfer_buffer, urb->actual_length);
+	memcpy(buffer, urb->transfer_buffer, size);
 
-	for (i = 0; i < size; i += 32) {
+	for (i = 0; i + 2 <= size; i += 32) {
 		portnum = *(buffer + i);
 		if (portnum < left || portnum >= right) {
 			break;
 		}
 		portnum -= ch9344->port_offset;
 		usblen = *(buffer + i + 1);
-		if (usblen > 30) {
+		if (usblen > 30 || i + 2 + usblen > size)
 			break;
-		}
 
 		if (ch9344->ttyport[portnum].isopen) {
 #ifndef PACKLOAD
@@ -1053,24 +1074,37 @@ static void ch9344_read_bulk_callback(struct urb *urb)
 	struct ch9344_rb *rb = urb->context;
 	struct ch9344 *ch9344 = rb->instance;
 	int status = urb->status;
+	bool stopped = false;
 
-	if (!ch9344->dev) {
+	if (!ch9344->dev || READ_ONCE(ch9344->disconnected)) {
 		set_bit(rb->index, &ch9344->read_urbs_free);
 		return;
 	}
 
-	if (status) {
-		set_bit(rb->index, &ch9344->read_urbs_free);
+	switch (status) {
+	case 0:
+		usb_mark_last_busy(ch9344->dev);
+		ch9344_process_read_urb(ch9344, urb);
+		break;
+	case -ENOENT:
+	case -ECONNRESET:
+	case -ESHUTDOWN:
+	case -ENODEV:
+	case -EPIPE:
 		dev_dbg(&ch9344->data->dev,
-			"%s - non-zero urb status: %d\n", __func__,
+			"%s - urb stopped: %d\n", __func__, status);
+		stopped = true;
+		break;
+	default:
+		dev_dbg(&ch9344->data->dev,
+			"%s - transient urb status: %d\n", __func__,
 			status);
-		return;
+		break;
 	}
 
-	usb_mark_last_busy(ch9344->dev);
-	ch9344_process_read_urb(ch9344, urb);
 	set_bit(rb->index, &ch9344->read_urbs_free);
-	ch9344_submit_read_urb(ch9344, rb->index, GFP_ATOMIC);
+	if (!stopped && !READ_ONCE(ch9344->disconnected))
+		ch9344_submit_read_urb(ch9344, rb->index, GFP_ATOMIC);
 }
 
 /* data interface wrote those outgoing bytes */
@@ -1323,7 +1357,7 @@ static int ch9344_tty_write(struct tty_struct *tty,
 	int portnum = ch9344_get_portnum(tty->index);
 	int timeout;
 	int maxep = ch9344->writesize / 20;
-	int packnum, maxpacknum;
+	int maxpacknum;
 	int packlen, total_len, sendlen;
 
 	if (!count)
@@ -1339,11 +1373,6 @@ static int ch9344_tty_write(struct tty_struct *tty,
 			count;
 	total_len = count;
 	sendlen = 0;
-
-	if (count % (maxep - 3))
-		packnum = count / (maxep - 3) + 1;
-	else
-		packnum = count / (maxep - 3);
 
 transmit:
 	spin_lock_irqsave(&ch9344->write_lock, flags);
@@ -1378,6 +1407,9 @@ transmit:
 
 	stat = usb_autopm_get_interface_async(ch9344->data);
 	if (stat) {
+		dev_err(&ch9344->data->dev,
+			"%s - autopm get failed on port %d: %d\n",
+			__func__, portnum, stat);
 		wb->use = 0;
 		spin_unlock_irqrestore(&ch9344->write_lock, flags);
 		return stat;
@@ -1406,8 +1438,11 @@ transmit:
 			ch9344->ttyport[portnum].write_empty,
 			msecs_to_jiffies(DEFAULT_TIMEOUT));
 		if (timeout <= 0) {
+			spin_lock_irqsave(&ch9344->write_lock, flags);
 			wb->use = 0;
 			ch9344->ttyport[portnum].write_empty = true;
+			usb_autopm_put_interface_async(ch9344->data);
+			spin_unlock_irqrestore(&ch9344->write_lock, flags);
 			dev_err(&ch9344->data->dev,
 				"%s - write timeout\n",
 				__func__);
@@ -3244,7 +3279,7 @@ static void ch9344_disconnect(struct usb_interface *intf)
 	usb_deregister_dev(intf, &ch9344_class);
 
 	mutex_lock(&ch9344->mutex);
-	ch9344->disconnected = true;
+	WRITE_ONCE(ch9344->disconnected, true);
 	wake_up_interruptible(&ch9344->wcfgioctl);
 	wake_up_interruptible(&ch9344->wgpioioctl);
 	usb_set_intfdata(ch9344->data, NULL);
