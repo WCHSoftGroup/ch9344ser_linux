@@ -219,6 +219,7 @@ struct ch9344 {
 	bool gpio_recv; /* gpio input sync flag */
 	wait_queue_head_t wgpioioctl; /* for gpio input ioctl */
 	struct mutex gpiomutex;
+	struct mutex cmdmutex; /* serialize command-response ioctls */
 	u8 cfgval[256];
 	bool cfg_recv;
 	u16 cfgindex;
