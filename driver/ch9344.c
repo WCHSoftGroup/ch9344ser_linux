@@ -609,7 +609,7 @@ static void ch9344_cmd_irq(struct urb *urb)
 	switch (status) {
 	case 0:
 		/* success */
-		for (i = 0; i < len;) {
+		for (i = 0; i + 3 <= len;) {
 			reg_iir = *(data + i + 1);
 			portnum = *(data + i) & 0x0f;
 
@@ -625,9 +625,13 @@ static void ch9344_cmd_irq(struct urb *urb)
 			}
 
 			if (reg_iir == R_INIT) {
+				if (i + 12 > len)
+					break;
 				i += 12;
 				continue;
 			} else if (reg_iir >= R_MOD && reg_iir <= R_TM_O) {
+				if (i + 4 > len)
+					break;
 				if ((portnum >= left) &&
 				    (portnum < right)) {
 					portnum -= ch9344->port_offset;
@@ -653,11 +657,13 @@ static void ch9344_cmd_irq(struct urb *urb)
 			} else if (reg_iir >= R_IO_CE &&
 				   reg_iir <= R_IO_CI) {
 				if (reg_iir == R_IO_CI) {
+					if (i + 10 > len)
+						break;
 					spin_lock_irqsave(
 						&ch9344->write_lock,
 						flags);
 					ch9344->gpio_recv = true;
-					memcpy(&gpiovalins, data + 2,
+					memcpy(&gpiovalins, data + i + 2,
 					       0x08);
 					ch9344->gpiovalins =
 						le64_to_cpu(gpiovalins);
@@ -690,6 +696,8 @@ static void ch9344_cmd_irq(struct urb *urb)
 			} else if (((reg_iir & 0x0f) == R_II_B3) ||
 				   ((reg_iir == VEN_R) &&
 				    (*(data + i + 2) == (rgadd | 0x06)))) {
+				if (reg_iir == VEN_R && i + 4 > len)
+					break;
 				if ((portnum >= left) &&
 				    (portnum < right)) {
 					portnum -= ch9344->port_offset;
@@ -831,6 +839,8 @@ static void ch9344_cmd_irq(struct urb *urb)
 				i += 3;
 				continue;
 			} else if (reg_iir == R_EE_CFG) {
+				if (i + 4 > len)
+					break;
 				if (*(data + i) == CMD_W_R) {
 					spin_lock_irqsave(
 						&ch9344->write_lock,
@@ -853,6 +863,8 @@ static void ch9344_cmd_irq(struct urb *urb)
 				i += 4;
 				continue;
 			} else if (reg_iir == R_UP_O) {
+				if (i + 4 > len)
+					break;
 				i += 4;
 				continue;
 			} else {
