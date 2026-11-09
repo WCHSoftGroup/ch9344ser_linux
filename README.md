@@ -16,6 +16,12 @@ This driver supports USB to quad serial ports chip ch9344 and USB to octal seria
 
 Before the driver works, you should make sure that the usb device has been plugged in and is working properly, you can use shell command "lsusb" or "dmesg" to confirm that, USB VID of these devices are [1A86], you can view all IDs from the id table which defined in "ch9344.c".
 
+The specific PIDs for chips are shown below:
+
+​	CH348Q/L: 0x55D9
+
+​	CH9344Q/L: 0xE018
+
 If the device works well, the driver will created tty devices named "ttyCH9344USBx" in /dev directory.
 
 ## Note

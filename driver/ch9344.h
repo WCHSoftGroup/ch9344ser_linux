@@ -25,7 +25,7 @@
 /*
  * Major and minor numbers.
  */
-#define CH9344_TTY_MAJOR 168
+#define CH9344_TTY_MAJOR 0
 #define CH9344_TTY_MINORS 256
 
 #define USB_MINOR_BASE 192
@@ -95,7 +95,9 @@
 #define CH9344_NR 4
 
 #define NUMSTEP 8
+#define CH9344_MAX_DEVICES (CH9344_TTY_MINORS / NUMSTEP)
 #define MAXGPIO 48
+#define MAXGPIO_CH9344 12
 #define MAXPORT 8
 #define CFGLEN 256
 #define IO_H 1
@@ -190,7 +192,7 @@ struct ch9344 {
 	u8 *cmdread_buffer; /* buffers of urbs */
 	dma_addr_t cmdread_dma; /* dma handles of buffers */
 
-	int opencounts;
+	atomic_t opencounts;
 	struct ch9344_wb wb[MAXPORT][CH9344_NW];
 	unsigned long read_urbs_free;
 	struct urb *read_urbs[CH9344_NR];
@@ -208,7 +210,16 @@ struct ch9344 {
 	int transmitting;
 	spinlock_t write_lock;
 	struct mutex mutex;
+	struct mutex cmdmutex;
+	struct delayed_work dwork;
+	unsigned long flags;
+#define EVENT_RX_STALL 0
+#define EVENT_RX_CMD_STALL 1
+#define EVENT_ERROR_DELAY 2
+
 	bool disconnected;
+	bool ready;
+	bool stopping;
 	u64 gpioenables;
 	u64 gpiodirs;
 	u64 gpiovals;
